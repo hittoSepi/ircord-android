@@ -1,9 +1,8 @@
 [versions]
-agp = "8.3.2"
-kotlin = "1.9.22"
-ksp = "1.9.22-1.0.17"
-compose-bom = "2024.02.02"
-compose-compiler = "1.5.10"
+agp = "8.7.3"
+kotlin = "2.0.21"
+ksp = "2.0.21-1.0.27"
+compose-bom = "2024.11.00"
 hilt = "2.51"
 hilt-navigation-compose = "1.2.0"
 room = "2.6.1"
@@ -69,6 +68,7 @@ timber = { group = "com.jakewharton.timber", name = "timber", version.ref = "tim
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
 protobuf = { id = "com.google.protobuf", version.ref = "protobuf-plugin" }
