@@ -4,8 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import fi.ircord.android.data.local.preferences.UserPreferences
-import fi.ircord.android.native.NativeCrypto
-import fi.ircord.android.native.NativeStore
+import fi.ircord.android.crypto.NativeCrypto
+import fi.ircord.android.crypto.NativeStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow

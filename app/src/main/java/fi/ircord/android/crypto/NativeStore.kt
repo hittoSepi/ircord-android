@@ -1,4 +1,4 @@
-package fi.ircord.android.native
+package fi.ircord.android.crypto
 
 import android.content.Context
 import java.io.File
@@ -7,15 +7,6 @@ import java.io.File
  * Java-side key store called by JNI (JNIStore in jni_bridge.cpp).
  * Uses files in app-private storage for synchronous read/write
  * (Room DAOs are suspend-only, but JNI callbacks must be synchronous).
- *
- * Directory layout:
- *   files/crypto_store/
- *     identity/<user_id>       — [4B pub_len LE][4B salt_len LE][salt][pub][priv_encrypted]
- *     sessions/<address>       — session record bytes
- *     prekeys/<id>             — pre-key record
- *     signed_prekeys/<id>      — signed pre-key record
- *     peers/<user_id>          — peer identity public key
- *     sender_keys/<id>         — sender key record
  */
 class NativeStore(context: Context) {
 
@@ -23,13 +14,10 @@ class NativeStore(context: Context) {
 
     private fun dir(name: String) = File(root, name).also { it.mkdirs() }
 
-    // ── Identity ──────────────────────────────────────────────────────────
-
     fun saveIdentity(userId: String, pubKey: ByteArray, privKeyEncrypted: ByteArray, salt: ByteArray) {
         val pubLen = pubKey.size
         val saltLen = salt.size
         val buf = ByteArray(8 + saltLen + pubLen + privKeyEncrypted.size)
-        // Little-endian uint32 lengths
         buf[0] = (pubLen and 0xFF).toByte()
         buf[1] = ((pubLen shr 8) and 0xFF).toByte()
         buf[2] = ((pubLen shr 16) and 0xFF).toByte()
@@ -49,8 +37,6 @@ class NativeStore(context: Context) {
         return if (f.exists()) f.readBytes() else null
     }
 
-    // ── Sessions ──────────────────────────────────────────────────────────
-
     fun saveSession(address: String, record: ByteArray) {
         File(dir("sessions"), address.sanitize()).writeBytes(record)
     }
@@ -59,8 +45,6 @@ class NativeStore(context: Context) {
         val f = File(dir("sessions"), address.sanitize())
         return if (f.exists()) f.readBytes() else null
     }
-
-    // ── Pre-keys ──────────────────────────────────────────────────────────
 
     fun savePreKey(id: Int, record: ByteArray) {
         File(dir("prekeys"), id.toString()).writeBytes(record)
@@ -75,8 +59,6 @@ class NativeStore(context: Context) {
         File(dir("prekeys"), id.toString()).delete()
     }
 
-    // ── Signed pre-keys ──────────────────────────────────────────────────
-
     fun saveSignedPreKey(id: Int, record: ByteArray) {
         File(dir("signed_prekeys"), id.toString()).writeBytes(record)
     }
@@ -85,8 +67,6 @@ class NativeStore(context: Context) {
         val f = File(dir("signed_prekeys"), id.toString())
         return if (f.exists()) f.readBytes() else null
     }
-
-    // ── Peer identities ──────────────────────────────────────────────────
 
     fun savePeerIdentity(userId: String, pubKey: ByteArray) {
         File(dir("peers"), userId.sanitize()).writeBytes(pubKey)
@@ -97,8 +77,6 @@ class NativeStore(context: Context) {
         return if (f.exists()) f.readBytes() else null
     }
 
-    // ── Sender keys ──────────────────────────────────────────────────────
-
     fun saveSenderKey(senderKeyId: String, record: ByteArray) {
         File(dir("sender_keys"), senderKeyId.sanitize()).writeBytes(record)
     }
@@ -108,7 +86,6 @@ class NativeStore(context: Context) {
         return if (f.exists()) f.readBytes() else null
     }
 
-    /** Sanitize filenames — replace unsafe chars with underscore. */
     private fun String.sanitize(): String =
         replace(Regex("[^a-zA-Z0-9._#@:-]"), "_")
 }

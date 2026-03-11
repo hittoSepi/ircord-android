@@ -17,6 +17,9 @@ FetchContent_Declare(
     GIT_SHALLOW TRUE
 )
 
+
+
+
 # Configure libsignal-protocol-c build for Android
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
@@ -36,14 +39,66 @@ add_library(ircord-native SHARED
     voice/voice_engine.cpp
 )
 
+
+
+# Find OpenSSL headers from NDK
+# Android NDK provides OpenSSL/BoringSSL headers in the sysroot
+if(ANDROID_NDK)
+    # Try different possible locations for NDK headers
+    set(NDK_OPENSSL_INCLUDE "")
+    
+    # Option 1: Standard LLVM toolchain path
+    file(GLOB NDK_LLVM_PATHS "${ANDROID_NDK}/toolchains/llvm/prebuilt/*/sysroot/usr/include")
+    if(NDK_LLVM_PATHS)
+        list(GET NDK_LLVM_PATHS 0 NDK_OPENSSL_INCLUDE)
+    endif()
+    
+    # Option 2: Alternative paths
+    if(NOT NDK_OPENSSL_INCLUDE OR NOT EXISTS "${NDK_OPENSSL_INCLUDE}/openssl/evp.h")
+        if(EXISTS "${ANDROID_NDK}/sysroot/usr/include/openssl/evp.h")
+            set(NDK_OPENSSL_INCLUDE "${ANDROID_NDK}/sysroot/usr/include")
+        elseif(EXISTS "${ANDROID_NDK}/usr/include/openssl/evp.h")
+            set(NDK_OPENSSL_INCLUDE "${ANDROID_NDK}/usr/include")
+        endif()
+    endif()
+    
+    # Option 3: Use CMake's find_path as fallback
+    if(NOT NDK_OPENSSL_INCLUDE OR NOT EXISTS "${NDK_OPENSSL_INCLUDE}/openssl/evp.h")
+        find_path(NDK_OPENSSL_INCLUDE 
+            NAMES openssl/evp.h
+            PATHS 
+                "${ANDROID_NDK}/toolchains/llvm/prebuilt/${ANDROID_HOST_TAG}/sysroot/usr/include"
+                "${ANDROID_NDK}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include"
+                "${ANDROID_NDK}/toolchains/llvm/prebuilt/windows-x86_64/sysroot/usr/include"
+                "${ANDROID_NDK}/sysroot/usr/include"
+            NO_DEFAULT_PATH
+        )
+    endif()
+    
+    if(NDK_OPENSSL_INCLUDE AND EXISTS "${NDK_OPENSSL_INCLUDE}/openssl/evp.h")
+        message(STATUS "Found OpenSSL headers at: ${NDK_OPENSSL_INCLUDE}")
+    else()
+        message(WARNING "OpenSSL headers not found in NDK. Build may fail.")
+        set(NDK_OPENSSL_INCLUDE "")
+    endif()
+else()
+    message(WARNING "ANDROID_NDK not set. OpenSSL headers may not be found.")
+    set(NDK_OPENSSL_INCLUDE "")
+endif()
+
 target_include_directories(ircord-native PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${libsignal-protocol-c_SOURCE_DIR}/src
+    ${NDK_OPENSSL_INCLUDE}
 )
 
 # Link libraries
+# Note: Android NDK provides OpenSSL/BoringSSL through the system
+# We link against libcrypto which is available in the NDK
 target_link_libraries(ircord-native
     signal-protocol-c
+    crypto      # Android NDK crypto library (OpenSSL/BoringSSL)
+    ssl         # Android NDK SSL library
     log         # Android log
 )
 

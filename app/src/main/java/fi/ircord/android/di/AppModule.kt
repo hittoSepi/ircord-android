@@ -11,7 +11,7 @@ import fi.ircord.android.data.local.preferences.UserPreferences
 import fi.ircord.android.data.remote.IrcordConnectionManager
 import fi.ircord.android.data.remote.IrcordSocket
 import fi.ircord.android.data.repository.MessageRepository
-import fi.ircord.android.native.NativeStore
+import fi.ircord.android.crypto.NativeStore
 import javax.inject.Singleton
 
 @Module

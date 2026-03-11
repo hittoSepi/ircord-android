@@ -4,8 +4,8 @@ import com.google.protobuf.ByteString
 import fi.ircord.android.data.local.entity.MessageEntity
 import fi.ircord.android.data.local.preferences.UserPreferences
 import fi.ircord.android.data.repository.MessageRepository
-import fi.ircord.android.native.NativeCrypto
-import fi.ircord.android.native.NativeStore
+import fi.ircord.android.crypto.NativeCrypto
+import fi.ircord.android.crypto.NativeStore
 import ircord.Ircord.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

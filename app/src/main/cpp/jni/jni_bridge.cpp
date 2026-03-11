@@ -249,6 +249,16 @@ static jbyteArray vectorToJbyteArray(JNIEnv* env, const std::vector<uint8_t>& da
     return arr;
 }
 
+// Helper that always returns a valid byte array (empty if input is empty)
+static jbyteArray vectorToJbyteArrayNonNull(JNIEnv* env, const std::vector<uint8_t>& data) {
+    jbyteArray arr = env->NewByteArray(data.size());
+    if (!data.empty()) {
+        env->SetByteArrayRegion(arr, 0, data.size(), 
+                               reinterpret_cast<const jbyte*>(data.data()));
+    }
+    return arr;
+}
+
 // ============================================================================
 // JNI Exports
 // ============================================================================
@@ -256,7 +266,7 @@ static jbyteArray vectorToJbyteArray(JNIEnv* env, const std::vector<uint8_t>& da
 extern "C" {
 
 JNIEXPORT jboolean JNICALL
-Java_fi_ircord_android_native_NativeCrypto_nativeInit(
+Java_fi_ircord_android_crypto_NativeCrypto_nativeInit(
         JNIEnv* env,
         jclass /*clazz*/,
         jobject store_obj,
@@ -282,7 +292,7 @@ Java_fi_ircord_android_native_NativeCrypto_nativeInit(
 }
 
 JNIEXPORT jbyteArray JNICALL
-Java_fi_ircord_android_native_NativeCrypto_prepareRegistration(
+Java_fi_ircord_android_crypto_NativeCrypto_prepareRegistration(
         JNIEnv* env,
         jclass /*clazz*/,
         jint numOpks) {
@@ -296,7 +306,7 @@ Java_fi_ircord_android_native_NativeCrypto_prepareRegistration(
 }
 
 JNIEXPORT jbyteArray JNICALL
-Java_fi_ircord_android_native_NativeCrypto_encrypt(
+Java_fi_ircord_android_crypto_NativeCrypto_encrypt(
         JNIEnv* env,
         jclass /*clazz*/,
         jstring recipientId,
@@ -316,7 +326,7 @@ Java_fi_ircord_android_native_NativeCrypto_encrypt(
 }
 
 JNIEXPORT jbyteArray JNICALL
-Java_fi_ircord_android_native_NativeCrypto_decrypt(
+Java_fi_ircord_android_crypto_NativeCrypto_decrypt(
         JNIEnv* env,
         jclass /*clazz*/,
         jstring senderId,
@@ -346,7 +356,7 @@ Java_fi_ircord_android_native_NativeCrypto_decrypt(
 }
 
 JNIEXPORT void JNICALL
-Java_fi_ircord_android_native_NativeCrypto_onKeyBundle(
+Java_fi_ircord_android_crypto_NativeCrypto_onKeyBundle(
         JNIEnv* env,
         jclass /*clazz*/,
         jstring recipientId,
@@ -365,7 +375,7 @@ Java_fi_ircord_android_native_NativeCrypto_onKeyBundle(
 }
 
 JNIEXPORT jboolean JNICALL
-Java_fi_ircord_android_native_NativeCrypto_hasSession(
+Java_fi_ircord_android_crypto_NativeCrypto_hasSession(
         JNIEnv* env,
         jclass /*clazz*/,
         jstring recipientId) {
@@ -381,7 +391,7 @@ Java_fi_ircord_android_native_NativeCrypto_hasSession(
 }
 
 JNIEXPORT void JNICALL
-Java_fi_ircord_android_native_NativeCrypto_initGroupSession(
+Java_fi_ircord_android_crypto_NativeCrypto_initGroupSession(
         JNIEnv* env,
         jclass /*clazz*/,
         jstring channelId,
@@ -409,7 +419,7 @@ Java_fi_ircord_android_native_NativeCrypto_initGroupSession(
 }
 
 JNIEXPORT jbyteArray JNICALL
-Java_fi_ircord_android_native_NativeCrypto_encryptGroup(
+Java_fi_ircord_android_crypto_NativeCrypto_encryptGroup(
         JNIEnv* env,
         jclass /*clazz*/,
         jstring channelId,
@@ -429,7 +439,7 @@ Java_fi_ircord_android_native_NativeCrypto_encryptGroup(
 }
 
 JNIEXPORT jbyteArray JNICALL
-Java_fi_ircord_android_native_NativeCrypto_decryptGroup(
+Java_fi_ircord_android_crypto_NativeCrypto_decryptGroup(
         JNIEnv* env,
         jclass /*clazz*/,
         jstring senderId,
@@ -455,7 +465,7 @@ Java_fi_ircord_android_native_NativeCrypto_decryptGroup(
 }
 
 JNIEXPORT void JNICALL
-Java_fi_ircord_android_native_NativeCrypto_processSenderKeyDistribution(
+Java_fi_ircord_android_crypto_NativeCrypto_processSenderKeyDistribution(
         JNIEnv* env,
         jclass /*clazz*/,
         jstring senderId,
@@ -477,7 +487,7 @@ Java_fi_ircord_android_native_NativeCrypto_processSenderKeyDistribution(
 }
 
 JNIEXPORT jstring JNICALL
-Java_fi_ircord_android_native_NativeCrypto_safetyNumber(
+Java_fi_ircord_android_crypto_NativeCrypto_safetyNumber(
         JNIEnv* env,
         jclass /*clazz*/,
         jstring peerId) {
@@ -494,7 +504,7 @@ Java_fi_ircord_android_native_NativeCrypto_safetyNumber(
 }
 
 JNIEXPORT jbyteArray JNICALL
-Java_fi_ircord_android_native_NativeCrypto_signChallenge(
+Java_fi_ircord_android_crypto_NativeCrypto_signChallenge(
         JNIEnv* env,
         jclass /*clazz*/,
         jbyteArray nonce) {
@@ -510,7 +520,7 @@ Java_fi_ircord_android_native_NativeCrypto_signChallenge(
 }
 
 JNIEXPORT jbyteArray JNICALL
-Java_fi_ircord_android_native_NativeCrypto_identityPub(
+Java_fi_ircord_android_crypto_NativeCrypto_identityPub(
         JNIEnv* env,
         jclass /*clazz*/) {
     if (!g_engine || !g_engine->ready()) {
@@ -523,7 +533,7 @@ Java_fi_ircord_android_native_NativeCrypto_identityPub(
 }
 
 JNIEXPORT jobject JNICALL
-Java_fi_ircord_android_native_NativeCrypto_currentSpk(
+Java_fi_ircord_android_crypto_NativeCrypto_currentSpk(
         JNIEnv* env,
         jclass /*clazz*/) {
     if (!g_engine || !g_engine->ready()) {
@@ -534,11 +544,12 @@ Java_fi_ircord_android_native_NativeCrypto_currentSpk(
     auto spk = g_engine->currentSpk();
     
     // Create SpkInfo class
-    jclass spkClass = env->FindClass("fi/ircord/android/native/NativeCrypto$SpkInfo");
+    jclass spkClass = env->FindClass("fi/ircord/android/crypto/NativeCrypto$SpkInfo");
     jmethodID constructor = env->GetMethodID(spkClass, "<init>", "([B[BI)V");
     
-    jbyteArray jpub = vectorToJbyteArray(env, spk.pub);
-    jbyteArray jsig = vectorToJbyteArray(env, spk.sig);
+    // Use non-null helper to avoid Kotlin non-null parameter violations
+    jbyteArray jpub = vectorToJbyteArrayNonNull(env, spk.pub);
+    jbyteArray jsig = vectorToJbyteArrayNonNull(env, spk.sig);
     
     jobject result = env->NewObject(spkClass, constructor, jpub, jsig, spk.id);
     
