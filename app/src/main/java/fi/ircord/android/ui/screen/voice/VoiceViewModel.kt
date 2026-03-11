@@ -1,13 +1,18 @@
 package fi.ircord.android.ui.screen.voice
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import fi.ircord.android.data.repository.VoiceRepository
 import fi.ircord.android.domain.model.VoiceParticipant
 import fi.ircord.android.domain.model.VoiceState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class VoiceUiState(
@@ -16,7 +21,7 @@ data class VoiceUiState(
     val isMuted: Boolean = false,
     val isDeafened: Boolean = false,
     val participants: List<VoiceParticipant> = emptyList(),
-    val latencyMs: Int = 23,
+    val latencyMs: Int = 0,
     val codec: String = "48kHz Opus",
     val isPrivateCall: Boolean = false,
     val callPeerId: String? = null,
@@ -24,23 +29,69 @@ data class VoiceUiState(
 )
 
 @HiltViewModel
-class VoiceViewModel @Inject constructor() : ViewModel() {
+class VoiceViewModel @Inject constructor(
+    private val voiceRepository: VoiceRepository,
+) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(
-        VoiceUiState(
-            channelName = "#general-voice",
-            participants = listOf(
-                VoiceParticipant("Matti", isSpeaking = true, audioLevel = 0.7f),
-                VoiceParticipant("Teppo"),
-                VoiceParticipant("Pekka", isMuted = true),
-            ),
-        )
-    )
+    private val _uiState = MutableStateFlow(VoiceUiState())
     val uiState: StateFlow<VoiceUiState> = _uiState.asStateFlow()
 
-    fun toggleMute() = _uiState.update { it.copy(isMuted = !it.isMuted) }
-    fun toggleDeafen() = _uiState.update { it.copy(isDeafened = !it.isDeafened) }
-    fun leave() { /* TODO: NativeVoice.leaveRoom() */ }
-    fun acceptCall() { /* TODO */ }
-    fun declineCall() { /* TODO */ }
+    init {
+        // Observe voice state from repository
+        voiceRepository.voiceState.onEach { voiceState ->
+            _uiState.update { state ->
+                state.copy(
+                    channelName = voiceState.channelId?.let { "#$it" } ?: "",
+                    isMuted = voiceState.isMuted,
+                    isDeafened = voiceState.isDeafened,
+                    participants = voiceState.participants,
+                    isPrivateCall = voiceState.isPrivateCall,
+                    callPeerId = voiceState.callPeerId,
+                    latencyMs = estimateLatency(), // TODO: Get real latency from native layer
+                )
+            }
+        }.launchIn(viewModelScope)
+    }
+
+    fun toggleMute() {
+        viewModelScope.launch {
+            voiceRepository.toggleMute()
+        }
+    }
+    
+    fun toggleDeafen() {
+        viewModelScope.launch {
+            voiceRepository.toggleDeafen()
+        }
+    }
+    
+    fun leave() {
+        viewModelScope.launch {
+            voiceRepository.leaveRoom()
+        }
+    }
+    
+    fun acceptCall() {
+        viewModelScope.launch {
+            voiceRepository.acceptCall()
+        }
+    }
+    
+    fun declineCall() {
+        viewModelScope.launch {
+            voiceRepository.declineCall()
+        }
+    }
+    
+    fun startPrivateCall(peerId: String) {
+        viewModelScope.launch {
+            voiceRepository.call(peerId)
+        }
+    }
+    
+    private fun estimateLatency(): Int {
+        // TODO: Get real latency measurement from native voice layer
+        // For now return a placeholder that varies slightly
+        return 20 + (kotlin.random.Random.nextInt(10))
+    }
 }

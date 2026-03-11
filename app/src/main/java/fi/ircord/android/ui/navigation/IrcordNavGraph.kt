@@ -1,6 +1,12 @@
 package fi.ircord.android.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -12,6 +18,7 @@ import fi.ircord.android.ui.screen.chat.ChatScreen
 import fi.ircord.android.ui.screen.settings.SettingsScreen
 import fi.ircord.android.ui.screen.verify.SafetyNumberScreen
 import fi.ircord.android.ui.screen.voice.CallScreen
+import kotlinx.coroutines.flow.first
 
 object IrcordRoutes {
     const val SETUP = "setup"
@@ -29,11 +36,29 @@ object IrcordRoutes {
 }
 
 @Composable
-fun IrcordNavGraph() {
+fun IrcordNavGraph(
+    viewModel: NavigationViewModel = hiltViewModel(),
+) {
     val navController = rememberNavController()
-
-    // TODO: check if setup is complete, navigate to CHAT instead
-    val startDestination = IrcordRoutes.SETUP
+    
+    // Check if user is registered
+    var isRegistered by remember { mutableStateOf<Boolean?>(null) }
+    
+    LaunchedEffect(Unit) {
+        isRegistered = viewModel.isRegistered.first()
+    }
+    
+    // Show loading while checking registration status
+    if (isRegistered == null) {
+        // Could show a splash screen here
+        return
+    }
+    
+    val startDestination = if (isRegistered == true) {
+        IrcordRoutes.chat("general")
+    } else {
+        IrcordRoutes.SETUP
+    }
 
     NavHost(navController = navController, startDestination = startDestination) {
 

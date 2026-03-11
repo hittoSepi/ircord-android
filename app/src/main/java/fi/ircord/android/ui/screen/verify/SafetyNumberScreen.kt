@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -20,9 +21,13 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
+import androidx.hilt.navigation.compose.hiltViewModel
 import fi.ircord.android.ui.theme.IrcordSpacing
 import fi.ircord.android.ui.theme.MonoStyle
 
@@ -31,9 +36,13 @@ import fi.ircord.android.ui.theme.MonoStyle
 fun SafetyNumberScreen(
     peerId: String,
     onBack: () -> Unit,
+    viewModel: SafetyNumberViewModel = hiltViewModel(),
 ) {
-    // Mock safety number
-    val safetyNumber = "05820  27193  83627\n49201  71920  38471\n\n62910  48271  93827\n10492  82736  19204"
+    val state by viewModel.uiState.collectAsState()
+    
+    LaunchedEffect(peerId) {
+        viewModel.loadSafetyNumber(peerId)
+    }
 
     Scaffold(
         topBar = {
@@ -63,52 +72,82 @@ fun SafetyNumberScreen(
 
             Spacer(Modifier.height(IrcordSpacing.xl))
 
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                shape = MaterialTheme.shapes.medium,
-            ) {
+            if (state.isLoading) {
+                CircularProgressIndicator()
+                Spacer(Modifier.height(IrcordSpacing.lg))
+                Text("Computing safety number...", style = MaterialTheme.typography.bodyMedium)
+            } else {
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    shape = MaterialTheme.shapes.medium,
+                ) {
+                    Text(
+                        text = state.safetyNumber,
+                        style = MonoStyle,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(IrcordSpacing.xl),
+                    )
+                }
+
+                Spacer(Modifier.height(IrcordSpacing.lg))
+
                 Text(
-                    text = safetyNumber,
-                    style = MonoStyle,
+                    text = "Compare this number with $peerId in person or via a trusted call.",
+                    style = MaterialTheme.typography.bodySmall,
                     textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(IrcordSpacing.xl),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                Spacer(Modifier.height(IrcordSpacing.xxl))
+
+                if (state.isVerified) {
+                    Button(
+                        onClick = { /* Already verified */ },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = false,
+                    ) {
+                        Text("\u2713 Verified")
+                    }
+                } else {
+                    Button(
+                        onClick = { viewModel.markAsVerified(peerId) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Mark as Verified")
+                    }
+                }
+
+                Spacer(Modifier.height(IrcordSpacing.md))
+
+                OutlinedButton(
+                    onClick = { /* TODO: copy to clipboard */ },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Copy to Clipboard")
+                }
+
+                Spacer(Modifier.height(IrcordSpacing.xl))
+
+                val verifiedText = if (state.isVerified) {
+                    "Identity verified"
+                } else {
+                    state.lastVerifiedAt?.let { "Last verified: ${formatTimestamp(it)}" } ?: "Last verified: never"
+                }
+                
+                Text(
+                    text = verifiedText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (state.isVerified) 
+                        MaterialTheme.colorScheme.primary 
+                    else 
+                        MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-
-            Spacer(Modifier.height(IrcordSpacing.lg))
-
-            Text(
-                text = "Compare this number with $peerId in person or via a trusted call.",
-                style = MaterialTheme.typography.bodySmall,
-                textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            Spacer(Modifier.height(IrcordSpacing.xxl))
-
-            Button(
-                onClick = { /* TODO: mark as verified */ },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Mark as Verified")
-            }
-
-            Spacer(Modifier.height(IrcordSpacing.md))
-
-            OutlinedButton(
-                onClick = { /* TODO: copy to clipboard */ },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Copy to Clipboard")
-            }
-
-            Spacer(Modifier.height(IrcordSpacing.xl))
-
-            Text(
-                text = "Last verified: never",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
+}
+
+private fun formatTimestamp(timestamp: Long): String {
+    val formatter = java.text.SimpleDateFormat("MMM dd, yyyy", java.util.Locale.getDefault())
+    return formatter.format(java.util.Date(timestamp))
 }

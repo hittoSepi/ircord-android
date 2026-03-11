@@ -1,45 +1,162 @@
 package fi.ircord.android.ui.screen.settings
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import fi.ircord.android.data.local.preferences.UserPreferences
+import fi.ircord.android.data.remote.IrcordSocket
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class SettingsUiState(
-    val nickname: String = "Sepi",
-    val identityFingerprint: String = "7A:A2:F7:9E:CE:6A:BB:9A:F7:73:DA:CA",
-    val serverAddress: String = "ircord.example.com",
+    val nickname: String = "",
+    val identityFingerprint: String = "",
+    val serverAddress: String = "",
     val port: String = "6667",
-    val isConnected: Boolean = true,
-    val themeMode: String = "Dark",
-    val messageStyle: String = "IRC",
-    val timestampFormat: String = "HH:MM",
+    val isConnected: Boolean = false,
+    val themeMode: String = UserPreferences.THEME_DARK,
+    val messageStyle: String = UserPreferences.STYLE_IRC,
+    val timestampFormat: String = UserPreferences.TIMESTAMP_24H,
     val compactMode: Boolean = false,
     val notifyMentions: Boolean = true,
     val notifyDMs: Boolean = true,
     val notifySound: Boolean = true,
     val pushToTalk: Boolean = false,
     val noiseSuppression: Boolean = true,
-    val voiceBitrate: String = "64 kbps",
+    val voiceBitrate: String = UserPreferences.BITRATE_64K,
     val screenCapture: Boolean = false,
     val version: String = "0.1.0",
     val protocolVersion: String = "v1",
 )
 
 @HiltViewModel
-class SettingsViewModel @Inject constructor() : ViewModel() {
+class SettingsViewModel @Inject constructor(
+    private val userPreferences: UserPreferences,
+    private val ircordSocket: IrcordSocket,
+) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
-    fun setCompactMode(v: Boolean) = _uiState.update { it.copy(compactMode = v) }
-    fun setNotifyMentions(v: Boolean) = _uiState.update { it.copy(notifyMentions = v) }
-    fun setNotifyDMs(v: Boolean) = _uiState.update { it.copy(notifyDMs = v) }
-    fun setNotifySound(v: Boolean) = _uiState.update { it.copy(notifySound = v) }
-    fun setPushToTalk(v: Boolean) = _uiState.update { it.copy(pushToTalk = v) }
-    fun setNoiseSuppression(v: Boolean) = _uiState.update { it.copy(noiseSuppression = v) }
-    fun setScreenCapture(v: Boolean) = _uiState.update { it.copy(screenCapture = v) }
+    init {
+        // Collect all preference flows and update UI state
+        combine(
+            userPreferences.nickname,
+            userPreferences.identityFingerprint,
+            userPreferences.serverAddress,
+            userPreferences.port,
+            ircordSocket.connectionState,
+            userPreferences.themeMode,
+            userPreferences.messageStyle,
+            userPreferences.timestampFormat,
+            userPreferences.compactMode,
+            userPreferences.notifyMentions,
+            userPreferences.notifyDMs,
+            userPreferences.notifySound,
+            userPreferences.pushToTalk,
+            userPreferences.noiseSuppression,
+            userPreferences.voiceBitrate,
+            userPreferences.screenCapture,
+        ) { values ->
+            val nickname = values[0] as String? ?: ""
+            val fingerprint = values[1] as String? ?: "Not generated"
+            val server = values[2] as String? ?: ""
+            val port = values[3] as Int
+            val connectionState = values[4] as fi.ircord.android.data.remote.ConnectionState
+            
+            _uiState.update { state ->
+                state.copy(
+                    nickname = nickname,
+                    identityFingerprint = fingerprint,
+                    serverAddress = server,
+                    port = port.toString(),
+                    isConnected = connectionState == fi.ircord.android.data.remote.ConnectionState.CONNECTED,
+                    themeMode = values[5] as String,
+                    messageStyle = values[6] as String,
+                    timestampFormat = values[7] as String,
+                    compactMode = values[8] as Boolean,
+                    notifyMentions = values[9] as Boolean,
+                    notifyDMs = values[10] as Boolean,
+                    notifySound = values[11] as Boolean,
+                    pushToTalk = values[12] as Boolean,
+                    noiseSuppression = values[13] as Boolean,
+                    voiceBitrate = values[14] as String,
+                    screenCapture = values[15] as Boolean,
+                )
+            }
+        }.launchIn(viewModelScope)
+    }
+
+    fun setThemeMode(mode: String) {
+        viewModelScope.launch { userPreferences.setThemeMode(mode) }
+    }
+    
+    fun setMessageStyle(style: String) {
+        viewModelScope.launch { userPreferences.setMessageStyle(style) }
+    }
+    
+    fun setTimestampFormat(format: String) {
+        viewModelScope.launch { userPreferences.setTimestampFormat(format) }
+    }
+    
+    fun setCompactMode(v: Boolean) {
+        viewModelScope.launch { userPreferences.setCompactMode(v) }
+    }
+    
+    fun setNotifyMentions(v: Boolean) {
+        viewModelScope.launch { userPreferences.setNotifyMentions(v) }
+    }
+    
+    fun setNotifyDMs(v: Boolean) {
+        viewModelScope.launch { userPreferences.setNotifyDMs(v) }
+    }
+    
+    fun setNotifySound(v: Boolean) {
+        viewModelScope.launch { userPreferences.setNotifySound(v) }
+    }
+    
+    fun setPushToTalk(v: Boolean) {
+        viewModelScope.launch { userPreferences.setPushToTalk(v) }
+    }
+    
+    fun setNoiseSuppression(v: Boolean) {
+        viewModelScope.launch { userPreferences.setNoiseSuppression(v) }
+    }
+    
+    fun setVoiceBitrate(bitrate: String) {
+        viewModelScope.launch { userPreferences.setVoiceBitrate(bitrate) }
+    }
+    
+    fun setScreenCapture(v: Boolean) {
+        viewModelScope.launch { userPreferences.setScreenCapture(v) }
+    }
+    
+    fun disconnect() {
+        viewModelScope.launch {
+            ircordSocket.disconnect()
+        }
+    }
+    
+    fun reconnect() {
+        viewModelScope.launch {
+            val state = _uiState.value
+            if (state.serverAddress.isNotBlank()) {
+                ircordSocket.connect(state.serverAddress, state.port.toIntOrNull() ?: 6667)
+            }
+        }
+    }
+    
+    fun logout() {
+        viewModelScope.launch {
+            ircordSocket.disconnect()
+            userPreferences.clearIdentity()
+        }
+    }
 }

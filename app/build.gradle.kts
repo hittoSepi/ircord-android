@@ -60,6 +60,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     packaging {
@@ -136,4 +137,7 @@ dependencies {
 
     // Logging
     implementation(libs.timber)
+
+    // DataStore
+    implementation(libs.datastore.preferences)
 }

@@ -1,7 +1,6 @@
 package fi.ircord.android.data.remote
 
 import java.io.InputStream
-import java.io.OutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import javax.inject.Inject
@@ -26,8 +25,27 @@ class FrameCodec @Inject constructor() {
         return buffer.array()
     }
 
+    /**
+     * Decodes a frame from a ByteArray (for WebSocket use).
+     * Returns null if the frame is invalid.
+     */
+    fun decode(frame: ByteArray): ByteArray? {
+        if (frame.size < HEADER_SIZE) return null
+        
+        val buffer = ByteBuffer.wrap(frame)
+        buffer.order(ByteOrder.BIG_ENDIAN)
+        
+        val length = buffer.int
+        if (length < 0 || length > MAX_FRAME_SIZE) return null
+        if (frame.size < HEADER_SIZE + length) return null
+        
+        val payload = ByteArray(length)
+        buffer.get(payload)
+        return payload
+    }
+
     suspend fun decode(inputStream: InputStream): ByteArray? {
-        // TODO: implement actual frame reading from TLS socket
+        // TODO: implement actual frame reading from TLS socket for raw TCP mode
         return null
     }
 }
