@@ -46,7 +46,7 @@ fun ChatScreen(
     val listState = rememberLazyListState()
     
     // Apply screen security when screen capture is disabled
-    SecureScreenEffect(secure = !state.screenCaptureEnabled)
+    SecureScreenEffect(enabled = !state.screenCaptureEnabled)
 
     Scaffold(
         topBar = {
@@ -91,6 +91,7 @@ fun ChatScreen(
                     text = state.inputText,
                     onTextChanged = viewModel::onInputChanged,
                     onSend = viewModel::sendMessage,
+                    onAttachFile = { /* TODO: file attachment */ },
                     enabled = state.isConnected,
                     modifier = Modifier.fillMaxWidth(),
                 )

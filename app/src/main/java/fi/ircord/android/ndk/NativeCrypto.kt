@@ -1,4 +1,4 @@
-package fi.ircord.android.native
+package fi.ircord.android.ndk
 
 import android.util.Log
 

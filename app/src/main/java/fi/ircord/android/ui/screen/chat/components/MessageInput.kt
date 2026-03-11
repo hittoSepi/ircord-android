@@ -1,5 +1,8 @@
 package fi.ircord.android.ui.screen.chat.components
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -26,10 +29,18 @@ fun MessageInput(
     text: String,
     onTextChanged: (String) -> Unit,
     onSend: () -> Unit,
+    onAttachFile: (Uri) -> Unit,
     enabled: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val semantic = IrcordTheme.semanticColors
+    
+    // File picker launcher
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let { onAttachFile(it) }
+    }
 
     Surface(
         color = semantic.inputBackground,
@@ -44,7 +55,7 @@ fun MessageInput(
             TextField(
                 value = text,
                 onValueChange = onTextChanged,
-                enabled = enabled,
+                enabled = true,
                 modifier = Modifier
                     .weight(1f)
                     .heightIn(min = IrcordSpacing.inputBarHeight),
@@ -66,8 +77,11 @@ fun MessageInput(
                 maxLines = 4,
             )
 
-            IconButton(onClick = { /* TODO: attach */ }) {
-                Icon(Icons.Default.AttachFile, contentDescription = "Attach")
+            IconButton(
+                onClick = { filePickerLauncher.launch("*/*") },
+                enabled = enabled
+            ) {
+                Icon(Icons.Default.AttachFile, contentDescription = "Attach file")
             }
 
             IconButton(

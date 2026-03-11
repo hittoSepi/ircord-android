@@ -23,14 +23,7 @@ set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 
 FetchContent_MakeAvailable(libsignal-protocol-c)
 
-# Find libsodium (provided by NDK or we need to build it)
-# For Android, we can use the NDK's crypto or fetch libsodium
-find_library(SODIUM_LIBRARY sodium)
-if(NOT SODIUM_LIBRARY)
-    # If not found, we need to build libsodium
-    message(STATUS "libsodium not found, will attempt to link with NDK crypto")
-    set(SODIUM_LIBRARY "")
-endif()
+# NOTE: libsodium is not used - using OpenSSL from NDK instead
 
 # Native crypto library
 add_library(ircord-native SHARED
@@ -51,8 +44,6 @@ target_include_directories(ircord-native PRIVATE
 # Link libraries
 target_link_libraries(ircord-native
     signal-protocol-c
-    crypto      # OpenSSL libcrypto from NDK
-    sodium      # libsodium for Argon2id and NaCl crypto
     log         # Android log
 )
 

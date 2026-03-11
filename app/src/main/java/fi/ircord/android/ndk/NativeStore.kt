@@ -1,4 +1,4 @@
-package fi.ircord.android.native
+package fi.ircord.android.ndk
 
 import android.content.Context
 import android.util.Base64

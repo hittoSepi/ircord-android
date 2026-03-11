@@ -1,11 +1,11 @@
 package fi.ircord.android.data.remote
 
-import fi.ircord.android.ircord.Envelope
-import fi.ircord.android.ircord.IrcCommand
-import fi.ircord.android.ircord.MessageType
-import fi.ircord.android.ircord.CommandResponse
-import fi.ircord.android.ircord.NickChange
-import fi.ircord.android.ircord.UserInfo
+import ircord.Ircord.Envelope
+import ircord.Ircord.IrcCommand
+import ircord.Ircord.MessageType
+import ircord.Ircord.CommandResponse
+import ircord.Ircord.NickChange
+import ircord.Ircord.UserInfo
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber

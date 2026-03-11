@@ -47,7 +47,7 @@ object EncryptedDatabaseFactory {
         // Build database with encryption
         return Room.databaseBuilder(context, klass, name)
             .openHelperFactory(factory)
-            .fallbackToDestructiveMigration(false) // Don't destroy data on migration failure
+            .fallbackToDestructiveMigration() // Don't destroy data on migration failure
             .addMigrations(*Migrations.ALL_MIGRATIONS)
             .build()
             .also {
@@ -75,7 +75,7 @@ object EncryptedDatabaseFactory {
         return Room.databaseBuilder(context, klass, name)
             .openHelperFactory(factory)
             .addCallback(callback)
-            .fallbackToDestructiveMigration(false)
+            .fallbackToDestructiveMigration()
             .addMigrations(*Migrations.ALL_MIGRATIONS)
             .build()
             .also {

@@ -1,9 +1,12 @@
 package fi.ircord.android.data.remote
 
 import com.google.protobuf.ByteString
-import fi.ircord.android.ircord.ChatEnvelope
-import fi.ircord.android.ircord.KeyBundle
-import fi.ircord.android.ircord.KeyUpload
+import ircord.Ircord.ChatEnvelope
+import ircord.Ircord.KeyBundle
+import ircord.Ircord.KeyUpload
+// Import Kotlin extension functions for protobuf
+import ircord.copy
+import ircord.keyBundle
 
 /**
  * Extension functions for working with Protocol Buffers.
@@ -74,7 +77,7 @@ fun KeyBundle.toNativeBytes(): ByteArray {
         data.add(((value shr 24) and 0xFF).toByte())
     }
     
-    // SPK ID
+    // SPK ID (use Java-style getter for protobuf)
     appendU32(spkId)
     
     // SPK public key

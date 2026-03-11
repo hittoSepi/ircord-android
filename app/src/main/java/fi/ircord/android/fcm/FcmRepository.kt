@@ -1,7 +1,7 @@
 package fi.ircord.android.fcm
 
 import android.content.Context
-import android.os.Lifecycle
+import androidx.lifecycle.Lifecycle
 import android.os.Process
 import android.util.Log
 import androidx.datastore.core.DataStore
@@ -14,7 +14,7 @@ import androidx.lifecycle.OnLifecycleEvent
 import com.google.firebase.messaging.FirebaseMessaging
 import dagger.hilt.android.qualifiers.ApplicationContext
 import fi.ircord.android.data.remote.IrcordSocket
-import fi.ircord.android.domain.model.ConnectionState
+import fi.ircord.android.data.remote.ConnectionState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

@@ -1,5 +1,6 @@
 package fi.ircord.android.di
 
+import android.content.ContentResolver
 import android.content.Context
 import dagger.Module
 import dagger.Provides
@@ -15,4 +16,9 @@ object AppModule {
     @Provides
     @Singleton
     fun provideApplicationContext(@ApplicationContext context: Context): Context = context
+    
+    @Provides
+    @Singleton
+    fun provideContentResolver(@ApplicationContext context: Context): ContentResolver = 
+        context.contentResolver
 }

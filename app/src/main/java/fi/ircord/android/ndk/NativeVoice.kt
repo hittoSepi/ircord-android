@@ -1,4 +1,4 @@
-package fi.ircord.android.native
+package fi.ircord.android.ndk
 
 import android.util.Log
 
@@ -225,15 +225,14 @@ object NativeVoice {
     // Signal Types
     // ============================================================================
     
-    companion object {
-        const val SIGNAL_OFFER = 1
-        const val SIGNAL_ANSWER = 2
-        const val SIGNAL_ICE = 3
-        const val SIGNAL_BYE = 4
-        const val SIGNAL_CALL_REQUEST = 5
-        const val SIGNAL_CALL_ACCEPT = 6
-        const val SIGNAL_CALL_DECLINE = 7
-    }
+    // Signal type constants
+    const val SIGNAL_OFFER = 1
+    const val SIGNAL_ANSWER = 2
+    const val SIGNAL_ICE = 3
+    const val SIGNAL_BYE = 4
+    const val SIGNAL_CALL_REQUEST = 5
+    const val SIGNAL_CALL_ACCEPT = 6
+    const val SIGNAL_CALL_DECLINE = 7
     
     private var callback: VoiceCallback? = null
     

@@ -3,7 +3,7 @@ package fi.ircord.android.data.repository
 import android.util.Log
 import fi.ircord.android.domain.model.VoiceParticipant
 import fi.ircord.android.domain.model.VoiceState
-import fi.ircord.android.native.NativeVoice
+import fi.ircord.android.ndk.NativeVoice
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow

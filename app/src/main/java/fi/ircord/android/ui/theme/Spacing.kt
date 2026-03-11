@@ -3,6 +3,14 @@ package fi.ircord.android.ui.theme
 import androidx.compose.ui.unit.dp
 
 object IrcordSpacing {
+    // Generic spacing scale (Material naming)
+    val extraSmall = 2.dp
+    val small = 4.dp
+    val medium = 8.dp
+    val large = 16.dp
+    val extraLarge = 24.dp
+    
+    // Legacy short names
     val xxs = 2.dp
     val xs = 4.dp
     val sm = 8.dp
@@ -11,6 +19,9 @@ object IrcordSpacing {
     val xl = 24.dp
     val xxl = 32.dp
     val xxxl = 48.dp
+    
+    // Screen padding
+    val screenPadding = 16.dp
 
     // Message list
     val messagePaddingHorizontal = 16.dp

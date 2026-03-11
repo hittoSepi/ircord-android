@@ -104,11 +104,8 @@ fun NotificationSettingsScreen(
                     hasPermission = notificationPermissionState?.status?.isGranted == true,
                     onRequestPermission = {
                         if (notificationPermissionState?.status?.isGranted == false) {
-                            if (notificationPermissionState.status.shouldShowRationale) {
-                                showPermissionRationale = true
-                            } else {
-                                notificationPermissionState.launchPermissionRequest()
-                            }
+                            // TODO: Check shouldShowRationale when API is available
+                            notificationPermissionState.launchPermissionRequest()
                         }
                     }
                 )

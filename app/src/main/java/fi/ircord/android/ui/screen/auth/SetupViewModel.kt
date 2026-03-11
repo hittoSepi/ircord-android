@@ -149,38 +149,38 @@ class SetupViewModel @Inject constructor(
     }
 
     /**
-     * Generates an Ed25519-like identity key pair and fingerprint.
+     * Generates an ECDSA P-256 identity key pair and fingerprint.
      * When native lib is ready, this will call NativeCrypto.generateIdentity()
+     * Using EC/P-256 as interim fallback — works on API 26+.
      */
     private fun generateIdentityKeyPair(): Pair<KeyPair, String> {
-        // Using Java's Ed25519 support (Java 15+) or fallback
-        val keyPairGenerator = KeyPairGenerator.getInstance("Ed25519")
+        val keyPairGenerator = KeyPairGenerator.getInstance("EC")
+        keyPairGenerator.initialize(java.security.spec.ECGenParameterSpec("secp256r1"), SecureRandom())
         val keyPair = keyPairGenerator.generateKeyPair()
-        
-        // Generate fingerprint: SHA-256 of public key, formatted as colon-separated hex
+
         val publicKeyBytes = keyPair.public.encoded
         val hash = MessageDigest.getInstance("SHA-256").digest(publicKeyBytes)
         val fingerprint = hash.take(18).joinToString(":") { "%02X".format(it) }
-        
+
         return keyPair to fingerprint
     }
 
     private fun generateSignedPreKey(identityKeyPair: KeyPair) {
-        // Generate a signed pre-key (X3DH protocol)
-        val keyPairGenerator = KeyPairGenerator.getInstance("Ed25519")
+        val keyPairGenerator = KeyPairGenerator.getInstance("EC")
+        keyPairGenerator.initialize(java.security.spec.ECGenParameterSpec("secp256r1"), SecureRandom())
         val signedPreKey = keyPairGenerator.generateKeyPair()
-        
-        // Sign the pre-key public key with identity key
-        val signature = Signature.getInstance("Ed25519")
+
+        val signature = Signature.getInstance("SHA256withECDSA")
         signature.initSign(identityKeyPair.private)
         signature.update(signedPreKey.public.encoded)
         val signedData = signature.sign()
-        
+
         // TODO: Store signed pre-key in database when KeyRepository supports it
     }
 
     private fun generateOneTimePreKeys(identityKeyPair: KeyPair, count: Int) {
-        val keyPairGenerator = KeyPairGenerator.getInstance("Ed25519")
+        val keyPairGenerator = KeyPairGenerator.getInstance("EC")
+        keyPairGenerator.initialize(java.security.spec.ECGenParameterSpec("secp256r1"), SecureRandom())
         val secureRandom = SecureRandom()
         
         // Generate batch of one-time pre-keys

@@ -11,7 +11,7 @@ import fi.ircord.android.data.local.IrcordDatabase
 import fi.ircord.android.data.local.dao.ChannelDao
 import fi.ircord.android.data.local.dao.MessageDao
 import fi.ircord.android.data.local.dao.PeerIdentityDao
-import fi.ircord.android.native.NativeStore
+import fi.ircord.android.ndk.NativeStore
 import net.sqlcipher.database.SQLiteDatabase
 import javax.inject.Singleton
 

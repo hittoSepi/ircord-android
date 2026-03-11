@@ -1,15 +1,19 @@
 package fi.ircord.android.ui.screen.chat
 
+import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.flow.onEach
 import dagger.hilt.android.lifecycle.HiltViewModel
 import fi.ircord.android.data.local.entity.MessageEntity
 import fi.ircord.android.data.local.preferences.UserPreferences
 import fi.ircord.android.data.remote.ConnectionState
 import fi.ircord.android.data.remote.IrcordSocket
+import fi.ircord.android.data.repository.FileRepository
 import fi.ircord.android.data.repository.MessageRepository
 import fi.ircord.android.data.repository.VoiceRepository
+import fi.ircord.android.domain.model.FileTransfer
 import fi.ircord.android.domain.model.LinkPreview
 import fi.ircord.android.domain.model.Message
 import fi.ircord.android.domain.model.SendStatus
@@ -19,6 +23,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -35,6 +40,7 @@ data class ChatUiState(
     val voiceChannelName: String? = null,
     val voiceParticipantCount: Int = 0,
     val screenCaptureEnabled: Boolean = false,
+    val activeFileTransfers: List<FileTransfer> = emptyList(),
 )
 
 @HiltViewModel
@@ -42,6 +48,7 @@ class ChatViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val messageRepository: MessageRepository,
     private val voiceRepository: VoiceRepository,
+    private val fileRepository: FileRepository,
     private val userPreferences: UserPreferences,
     private val ircordSocket: IrcordSocket,
 ) : ViewModel() {
@@ -57,16 +64,23 @@ class ChatViewModel @Inject constructor(
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
 
     init {
-        // Load current user
+        // Load current user and connect to server
         viewModelScope.launch {
             val nickname = userPreferences.nickname.first() ?: ""
             _uiState.update { it.copy(currentUserId = nickname) }
+
+            // Connect socket using saved server settings
+            val address = userPreferences.serverAddress.first()
+            val port = userPreferences.port.first()
+            if (!address.isNullOrBlank() && ircordSocket.connectionState.value == ConnectionState.DISCONNECTED) {
+                ircordSocket.connect(address, port)
+            }
         }
 
         // Observe screen capture setting
-        userPreferences.screenCapture.launchIn(viewModelScope) { enabled ->
+        userPreferences.screenCapture.onEach { enabled ->
             _uiState.update { it.copy(screenCaptureEnabled = enabled) }
-        }
+        }.launchIn(viewModelScope)
 
         // Combine repository flows to update UI
         combine(
@@ -87,6 +101,18 @@ class ChatViewModel @Inject constructor(
                 )
             }
         }.launchIn(viewModelScope)
+        
+        // Observe file transfer updates
+        viewModelScope.launch {
+            fileRepository.transferUpdates.collect { transfer ->
+                _uiState.update { state ->
+                    val updatedList = state.activeFileTransfers.map { 
+                        if (it.fileId == transfer.fileId) transfer else it 
+                    }
+                    state.copy(activeFileTransfers = updatedList)
+                }
+            }
+        }
     }
 
     fun onInputChanged(text: String) = _uiState.update { it.copy(inputText = text) }
@@ -140,6 +166,40 @@ class ChatViewModel @Inject constructor(
     fun deleteMessage(messageId: Long) {
         viewModelScope.launch {
             // TODO: Add delete method to MessageRepository if needed
+        }
+    }
+    
+    // ============================================================================
+    // File Transfer
+    // ============================================================================
+    
+    fun uploadFile(uri: Uri) {
+        viewModelScope.launch {
+            fileRepository.uploadFile(
+                uri = uri,
+                channelId = channelId
+            ).onSuccess { transfer ->
+                _uiState.update { state ->
+                    state.copy(activeFileTransfers = state.activeFileTransfers + transfer)
+                }
+            }.onFailure { error ->
+                // Error handling - could emit an event
+            }
+        }
+    }
+    
+    fun cancelFileTransfer(fileId: String) {
+        fileRepository.cancelTransfer(fileId)
+    }
+    
+    fun clearCompletedTransfers() {
+        fileRepository.clearCompletedTransfers()
+        _uiState.update { state ->
+            state.copy(activeFileTransfers = state.activeFileTransfers.filter { 
+                it.status != fi.ircord.android.domain.model.TransferStatus.COMPLETED &&
+                it.status != fi.ircord.android.domain.model.TransferStatus.FAILED &&
+                it.status != fi.ircord.android.domain.model.TransferStatus.CANCELLED
+            })
         }
     }
 

@@ -138,6 +138,16 @@ fun SetupScreen(
                     textAlign = TextAlign.Center,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+
+                state.error?.let { errorMsg ->
+                    Spacer(Modifier.height(IrcordSpacing.md))
+                    Text(
+                        text = errorMsg,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        textAlign = TextAlign.Center,
+                    )
+                }
             }
 
             AnimatedVisibility(visible = state.isGenerating) {

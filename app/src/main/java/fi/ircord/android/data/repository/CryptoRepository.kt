@@ -1,8 +1,8 @@
 package fi.ircord.android.data.repository
 
 import android.util.Log
-import fi.ircord.android.native.NativeCrypto
-import fi.ircord.android.native.NativeStore
+import fi.ircord.android.ndk.NativeCrypto
+import fi.ircord.android.ndk.NativeStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import javax.inject.Inject

@@ -1,7 +1,7 @@
 package fi.ircord.android.security.biometric
 
 import androidx.fragment.app.FragmentActivity
-import fi.ircord.android.native.NativeCrypto
+import fi.ircord.android.ndk.NativeCrypto
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import timber.log.Timber
