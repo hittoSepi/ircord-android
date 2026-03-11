@@ -1,5 +1,6 @@
 package fi.ircord.android.ui.screen.settings
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -24,9 +25,13 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
+import fi.ircord.android.data.local.preferences.UserPreferences
 import fi.ircord.android.ui.theme.IrcordSpacing
 import fi.ircord.android.ui.theme.IrcordTheme
 
@@ -38,6 +43,9 @@ fun SettingsScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val semantic = IrcordTheme.semanticColors
+    
+    // Dialog states
+    var showThemeDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -79,7 +87,18 @@ fun SettingsScreen(
             }
 
             SectionTitle("APPEARANCE")
-            SettingsRow("Theme", state.themeMode)
+            // Theme selector - clickable
+            val themeDisplayName = when (state.themeMode) {
+                UserPreferences.THEME_SYSTEM -> "System default"
+                UserPreferences.THEME_LIGHT -> "Light"
+                UserPreferences.THEME_DARK -> "Dark"
+                else -> "System default"
+            }
+            SettingsRow(
+                label = "Theme",
+                value = themeDisplayName,
+                onClick = { showThemeDialog = true },
+            )
             SettingsRow("Message style", state.messageStyle)
             SettingsRow("Timestamp", state.timestampFormat)
             SettingsToggle("Compact mode", state.compactMode, viewModel::setCompactMode)
@@ -107,6 +126,18 @@ fun SettingsScreen(
             Spacer(Modifier.height(IrcordSpacing.xxl))
         }
     }
+    
+    // Theme selector dialog
+    if (showThemeDialog) {
+        ThemeSelectorDialog(
+            currentTheme = state.themeMode,
+            onThemeSelected = { mode ->
+                viewModel.setThemeMode(mode)
+                showThemeDialog = false
+            },
+            onDismiss = { showThemeDialog = false },
+        )
+    }
 }
 
 @Composable
@@ -125,10 +156,15 @@ private fun SectionTitle(title: String) {
 }
 
 @Composable
-private fun SettingsRow(label: String, value: String) {
+private fun SettingsRow(
+    label: String,
+    value: String,
+    onClick: (() -> Unit)? = null,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .clickable(enabled = onClick != null, onClick = onClick ?: {})
             .padding(horizontal = IrcordSpacing.lg, vertical = IrcordSpacing.md),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -136,10 +172,11 @@ private fun SettingsRow(label: String, value: String) {
         if (value.isNotEmpty()) {
             Text(value, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.width(IrcordSpacing.xs))
-            Text(">", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        } else {
-            Text(">", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        Text(
+            if (onClick != null) ">" else "",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

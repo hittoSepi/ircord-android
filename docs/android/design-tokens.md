@@ -493,7 +493,88 @@ object IrcordMotion {
 
 ---
 
-## 8. Dark/Light Mode -strategia
+## 8. Theme System (Teemajärjestelmä)
+
+### Theme Modes (Teematilat)
+
+Asetukset → Ulkoasu → Teema:
+
+| Mode | Arvo | Kuvaus |
+|------|------|--------|
+| **System default** | `THEME_SYSTEM` | Seuraa puhelimen teema-asetusta (oletus) |
+| **Light** | `THEME_LIGHT` | Pakota vaalea teema |
+| **Dark** | `THEME_DARK` | Pakota Tokyo Night tumma teema |
+
+### Toteutusarkkitehtuuri
+
+```kotlin
+// ThemeViewModel.kt
+@HiltViewModel
+class ThemeViewModel @Inject constructor(userPreferences: UserPreferences) {
+    val themeMode: StateFlow<String>      // THEME_SYSTEM / THEME_LIGHT / THEME_DARK
+    val isDarkTheme: StateFlow<Boolean?>  // null = seuraa järjestelmää
+    
+    fun setThemeMode(mode: String) { /* ... */ }
+}
+
+// MainActivity.kt
+class MainActivity : ComponentActivity() {
+    private val themeViewModel: ThemeViewModel by viewModels()
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        setContent {
+            val isDarkTheme by themeViewModel.isDarkTheme.collectAsStateWithLifecycle()
+            
+            // isDarkTheme = null → seuraa järjestelmää
+            // isDarkTheme = true/false → pakota teema
+            val darkTheme = when (isDarkTheme) {
+                true -> true
+                false -> false
+                null -> isSystemInDarkTheme()
+            }
+            
+            IrcordTheme(darkTheme = darkTheme) {
+                // App content
+            }
+        }
+    }
+}
+```
+
+### Talletus
+
+Theme mode tallennetaan DataStoreen:
+```kotlin
+// UserPreferences.kt
+val themeMode: Flow<String> = dataStore.data.map { 
+    it[KEY_THEME_MODE] ?: THEME_SYSTEM  // Oletus: seuraa järjestelmää
+}
+```
+
+### Theme Selector UI
+
+```kotlin
+// ThemeSelectorDialog.kt
+@Composable
+fun ThemeSelectorDialog(
+    currentTheme: String,
+    onThemeSelected: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val options = listOf(
+        THEME_SYSTEM to "System default" to "Follows your phone's theme setting",
+        THEME_LIGHT to "Light" to "Always use light theme",
+        THEME_DARK to "Dark" to "Always use dark theme",
+    )
+    // Radio button list dialog
+}
+```
+
+Käyttö: `SettingsScreen` → klikkaa "Teema"-riviä → avaa `ThemeSelectorDialog`.
+
+---
+
+### Dark/Light Mode -strategia
 
 | Aspekti | Dark (default) | Light |
 |---------|---------------|-------|
@@ -505,5 +586,6 @@ object IrcordMotion {
 **Suositus:** Dark mode on primary. Light mode tuetaan mutta ei priorisoida —
 käyttäjäkunta on terminaalikäyttäjiä jotka suosivat tummaa.
 
-App seuraa Android system settingiä (`isSystemInDarkTheme()`) ellei
-käyttäjä valitse override-asetusta: `Dark / Light / System`.
+**Toteutus:** `ThemeViewModel` hallinnoi tilaa, `MainActivity` soveltaa teeman
+Compose-hierarkian juuressa. Asetus tallennetaan DataStoreen ja säilyy
+globaalisti kaikissa näkymissä.

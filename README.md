@@ -1,183 +1,180 @@
-# IrssiCord
+# IRCord Android
 
-End-to-end encrypted chat and voice application for friend groups. Combines irssi's minimal terminal aesthetics with modern features: E2E encryption (Signal Protocol), link preview, voice rooms, and private calls.
+Android client for IRCord — an end-to-end encrypted chat and voice application for friend groups. Built with Kotlin, Jetpack Compose, and C++ (NDK).
+
+## Features
+
+- 🔒 **End-to-end encryption** via Signal Protocol (X3DH + Double Ratchet)
+- 👥 **Group chats** with Sender Keys for efficient multi-party encryption
+- 🎨 **Dark/Light themes** — Tokyo Night dark theme + clean light theme
+- 🎙️ **Voice calls** (planned) — WebRTC-based voice rooms and private calls
+- 🔐 **Ed25519 identity keys** with Argon2id-encrypted storage
 
 ## Architecture
 
-**Client-server relay model** — the server never sees plaintext messages. The server acts as a relay and handles connection management, but all message content is encrypted end-to-end between clients.
+```
+┌─────────────────────────────────────────────────────────────┐
+│  UI Layer (Jetpack Compose)                                  │
+│  - Material3 design system                                   │
+│  - Theme support (System/Light/Dark)                         │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+┌──────────────────────────┴──────────────────────────────────┐
+│  ViewModel Layer (Kotlin Coroutines)                         │
+│  - ThemeViewModel, ChatViewModel, SettingsViewModel          │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+┌──────────────────────────┴──────────────────────────────────┐
+│  Repository Layer                                            │
+│  - CryptoRepository (Signal Protocol via JNI)                │
+│  - MessageRepository, ChannelRepository                      │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+┌──────────────────────────┴──────────────────────────────────┐
+│  Native Layer (C++ NDK)                                      │
+│  - libsignal-protocol-c (X3DH, Double Ratchet)               │
+│  - libsodium (Argon2id, XChaCha20-Poly1305)                  │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ## Technology Stack
 
-| Component | Choice | Rationale |
-|-----------|--------|-----------|
-| Language | C++20 | Performance, compatibility client/server |
-| Async I/O | Boost.Asio | Scalable event loop, cross-platform |
-| Serialization | Protobuf | Better tooling, schema evolution vs FlatBuffers |
-| E2E Crypto | libsignal-protocol-c + libsodium | Signal Protocol (X3DH + Double Ratchet) |
-| Database | SQLite (SQLiteCpp wrapper) | Embedded, minimal overhead |
-| Config | toml11 | Simple TOML parsing |
-| Logging | spdlog | Fast, structured logging |
-| Testing | Catch2 | Header-only test framework |
-| Build | CMake + vcpkg | Cross-platform build, manifest-mode deps |           asaa
+| Component | Technology |
+|-----------|------------|
+| Language | Kotlin / C++20 |
+| UI | Jetpack Compose |
+| Architecture | MVVM + Repository pattern |
+| DI | Hilt |
+| Database | Room (SQLite) |
+| Preferences | DataStore |
+| Networking | OkHttp + raw TLS socket |
+| Crypto (native) | libsignal-protocol-c + libsodium |
+| Serialization | Protobuf Lite |
 
 ## Build Instructions
 
 ### Prerequisites
 
-- **C++20 compatible compiler** (GCC 11+, Clang 13+, MSVC 2022+)
-- **CMake 3.20+**
-- **vcpkg** package manager
-- **Git**
+- Android Studio Hedgehog (2023.1.1) or newer
+- Android SDK 34
+- NDK 27.0.12077973 or newer
+- CMake 3.22.1 or newer
 
-### Windows (Visual Studio 2022)
-
-1. **Install vcpkg**
-   ```bash
-   git clone https://github.com/Microsoft/vcpkg.git C:\vcpkg
-   cd C:\vcpkg
-   .\bootstrap-vcpkg.bat
-   ```
-
-2. **Configure build environment**
-   ```bash
-   # Navigate to project directory
-   cd C:\Users\<username>\Desktop\ircord\IrssiCord
-
-   # Create build directory
-   mkdir build
-   cd build
-
-   # Configure with vcpkg toolchain
-   cmake -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake ..
-   ```
-
-3. **Build**
-   ```bash
-   cmake --build . --config Debug
-   ```
-
-4. **Run**
-   ```bash
-   .\Debug\ircord-server.exe
-   ```
-
-### Linux (Debian/Ubuntu)
-
-1. **Install dependencies**
-   ```bash
-   sudo apt-get update
-   sudo apt-get install -y cmake g++ git libssl-dev
-   ```
-
-2. **Install vcpkg**
-   ```bash
-   git clone https://github.com/Microsoft/vcpkg.git ~/vcpkg
-   ~/vcpkg/bootstrap-vcpkg.sh
-   ```
-
-3. **Build**
-   ```bash
-   mkdir build && cd build
-   cmake -DCMAKE_TOOLCHAIN_FILE=~/vcpkg/scripts/buildsystems/vcpkg.cmake ..
-   cmake --build . -j$(nproc)
-   ```
-
-4. **Run**
-   ```bash
-   ./ircord-server
-   ```
-
-## Configuration
-
-Create a `server.toml` configuration file (see `config/server.toml.example`):
-
-```toml
-[server]
-host = "0.0.0.0"
-port = 6697
-log_level = "info"
-max_connections = 100
-
-[tls]
-cert_file = "certs/server.crt"
-key_file = "certs/server.key"
-
-[ping]
-interval_sec = 60
-timeout_sec = 120
-```
-
-### Generate TLS Certificates
-
-For development, create self-signed certificates:
+### Build
 
 ```bash
-# Create certs directory
-mkdir -p certs
+cd ircord-android
 
-# Generate private key
-openssl genrsa -out certs/server.key 2048
+# Debug build
+./gradlew assembleDebug
 
-# Generate certificate
-openssl req -new -x509 -key certs/server.key -out certs/server.crt -days 365
+# Release build
+./gradlew assembleRelease
+
+# Run tests
+./gradlew test
+
+# Install on connected device
+./gradlew installDebug
 ```
 
-## Running the Server
+The first build will:
+1. Download dependencies (Gradle, Android SDK)
+2. Fetch and build `libsignal-protocol-c` via CMake FetchContent
+3. Compile native `ircord-native.so` libraries for all ABIs
+4. Generate Java/Kotlin classes from protobuf schemas
+5. Build the Android app
 
-```bash
-# From build directory
-./ircord-server
+## Native Crypto Module
 
-# Or with custom config
-./ircord-server /path/to/server.toml
+The Signal Protocol implementation is in C++ and shared with the desktop client:
+
+```
+app/src/main/cpp/
+├── CMakeLists.txt              # Fetches libsignal-protocol-c
+├── crypto/
+│   ├── crypto_engine.hpp/cpp   # Signal Protocol implementation
+│   └── ...
+└── jni/
+    └── jni_bridge.cpp          # JNI bindings
 ```
 
-The server will:
-1. Load configuration from `server.toml`
-2. Initialize TLS context with certificates
-3. Start TCP listener on specified host:port
-4. Accept client connections
+### Crypto Features
 
-### Testing with Telnet/PuTTY
+- **X3DH** (Extended Triple Diffie-Hellman) — Initial key exchange
+- **Double Ratchet** — Forward secrecy for ongoing sessions
+- **Sender Keys** — Efficient group encryption
+- **Argon2id + XChaCha20-Poly1305** — Identity key encryption at rest
 
-You can test the server accepts connections:
+### JNI Interface
 
-```bash
-telnet localhost 6697
+```kotlin
+// Initialize crypto engine
+NativeCrypto.init(store, userId, passphrase)
+
+// Encrypt message
+val ciphertext = NativeCrypto.encrypt(recipientId, plaintext.toByteArray())
+
+// Decrypt message
+val plaintext = NativeCrypto.decrypt(senderId, recipientId, ciphertext, type)
+
+// Get safety number for verification
+val safetyNumber = NativeCrypto.safetyNumber(peerId)
 ```
 
-Or use PuTTY:
-- Host: `localhost`
-- Port: `6697`
-- Connection type: `telnet`
+## Theming
+
+Three theme options available in **Settings → Appearance → Theme**:
+
+| Option | Description |
+|--------|-------------|
+| System default | Follows phone's theme setting (default) |
+| Light | Clean light theme |
+| Dark | Tokyo Night dark theme |
+
+Theme state is managed by `ThemeViewModel` and persisted in DataStore.
 
 ## Project Structure
 
 ```
-ircord-server/
-├── CMakeLists.txt          # CMake build configuration
-├── vcpkg.json              # vcpkg dependencies
-├── config/
-│   └── server.toml.example # Configuration template
-├── src/
-│   ├── main.cpp            # Entry point
-│   ├── server.cpp/hpp      # Server orchestration
-│   ├── config.cpp/hpp      # Configuration loader
-│   ├── net/
-│   │   ├── listener.cpp/hpp    # TLS/TCP acceptor
-│   │   ├── session.cpp/hpp     # Per-connection state machine
-│   │   └── tls_context.cpp/hpp # SSL context factory
-│   └── proto/
-│       └── ircord.proto     # Protobuf schema
-└── docs/
-    ├── server-architecture.md      # Server design (Finnish)
-    ├── client-architecture.md      # Client design (Finnish)
-    └── ircord-tech-tradeoffs.md    # Technical decisions (Finnish)
+app/src/main/java/fi/ircord/android/
+├── MainActivity.kt              # Entry point, theme application
+├── IrcordApp.kt                 # Application class
+│
+├── data/
+│   ├── local/                   # Room database
+│   ├── remote/                  # Network layer
+│   └── repository/              # Repositories
+│       └── CryptoRepository.kt  # High-level crypto API
+│
+├── native/                      # JNI bridge
+│   ├── NativeCrypto.kt          # JNI interface
+│   └── NativeStore.kt           # Room-backed crypto store
+│
+├── ui/
+│   ├── theme/                   # Theme system
+│   │   ├── ThemeViewModel.kt    # Theme state management
+│   │   └── Color.kt             # Light + Dark colors
+│   │
+│   └── screen/
+│       └── settings/
+│           ├── SettingsScreen.kt
+│           └── ThemeSelectorDialog.kt
+│
+└── di/                          # Hilt modules
 ```
+
+## Security
+
+- **Server sees**: IP addresses, who messages whom, timestamps
+- **Server does NOT see**: Message content (E2E encrypted)
+- **Identity keys**: Ed25519, encrypted at rest with Argon2id
+- **Sessions**: Double Ratchet provides forward secrecy
+- **Screen capture**: FLAG_SECURE option in settings
 
 ## Wire Protocol
 
-Length-prefixed framing over TCP/TLS:
+Length-prefixed Protobuf frames over TLS/TCP:
 
 ```
 ┌──────────────┬────────────────────────┐
@@ -186,63 +183,25 @@ Length-prefixed framing over TCP/TLS:
 └──────────────┴────────────────────────┘
 ```
 
-Max message size: **64 KB** (enforced server-side).
-
-## Security Model
-
-- **Server sees**: IP addresses, who messages whom, timestamps
-- **Server does NOT see**: message content, file contents, voice audio (P2P mode), link preview content
-- **Auth**: Ed25519 identity key challenge-response (not password-based)
-- **E2E**: Signal Protocol (X3DH initial + Double Ratchet for ongoing)
-- **At-rest**: Identity keys encrypted with Argon2id + XChaCha20-Poly1305
-
-## Current Implementation Status
-
-### ✅ Implemented
-- [x] TLS/TCP listener with Boost.Asio
-- [x] Session management with strand serialization
-- [x] Protobuf wire protocol framing
-- [x] TOML configuration loading
-- [x] Thread pool architecture
-- [x] Basic server infrastructure
-- [x] Visual Studio 2022 build support
-
-### 🚧 In Progress
-- [ ] Message relay between clients
-- [ ] Authentication system (Ed25519)
-- [ ] Channel management
-- [ ] Key distribution (pre-keys)
-- [ ] Presence system
-
-### 📋 Planned
-- [ ] Voice signaling (WebRTC ICE relay)
-- [ ] Offline message queue
-- [ ] Rate limiting
-- [ ] File transfer relay
-- [ ] Link preview service
+Max message size: **64 KB**
 
 ## Documentation
 
-**Note:** Most architecture documentation is in Finnish. See the `docs/` directory:
-- `server-architecture.md` - Server architecture (Finnish)
-- `client-architecture.md` - Client architecture (Finnish)
-- `ircord-tech-tradeoffs.md` - Technical decisions (Finnish)
+- [Architecture (Finnish)](docs/android/architecture.md) — Detailed architecture docs
+- [CLAUDE.md](CLAUDE.md) — Claude Code context and guidance
+
+## Related Projects
+
+- [ircord-server](../ircord-server) — C++ relay server
+- [ircord-client](../ircord-client) — Desktop terminal client
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Contributing
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+MIT License — see LICENSE file for details.
 
 ## Acknowledgments
 
-- **irssi** - Inspiration for the terminal aesthetic
-- **Signal** - End-to-end encryption protocol
-- **Boost.Asio** - Excellent async I/O library
-- **vcpkg** - C++ package manager
+- **Signal** — Signal Protocol implementation
+- **libsignal-protocol-c** — Open Source Signal Protocol library
+- **libsodium** — Modern cryptographic library
+- **Jetpack Compose** — Android UI toolkit

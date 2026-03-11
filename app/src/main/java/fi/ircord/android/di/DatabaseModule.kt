@@ -8,9 +8,11 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import fi.ircord.android.data.local.IrcordDatabase
+import fi.ircord.android.data.local.Migrations
 import fi.ircord.android.data.local.dao.ChannelDao
 import fi.ircord.android.data.local.dao.MessageDao
 import fi.ircord.android.data.local.dao.PeerIdentityDao
+import fi.ircord.android.native.NativeStore
 import javax.inject.Singleton
 
 @Module
@@ -24,7 +26,9 @@ object DatabaseModule {
             context,
             IrcordDatabase::class.java,
             "ircord.db"
-        ).build()
+        )
+        .addMigrations(Migrations.MIGRATION_1_2)
+        .build()
     }
 
     @Provides
@@ -35,4 +39,11 @@ object DatabaseModule {
 
     @Provides
     fun providePeerIdentityDao(db: IrcordDatabase): PeerIdentityDao = db.peerIdentityDao()
+
+    @Provides
+    @Singleton
+    fun provideNativeStore(
+        @ApplicationContext context: Context,
+        db: IrcordDatabase
+    ): NativeStore = NativeStore(context, db)
 }

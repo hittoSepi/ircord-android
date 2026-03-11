@@ -21,7 +21,7 @@ data class SettingsUiState(
     val serverAddress: String = "",
     val port: String = "6667",
     val isConnected: Boolean = false,
-    val themeMode: String = UserPreferences.THEME_DARK,
+    val themeMode: String = UserPreferences.THEME_SYSTEM,
     val messageStyle: String = UserPreferences.STYLE_IRC,
     val timestampFormat: String = UserPreferences.TIMESTAMP_24H,
     val compactMode: Boolean = false,

@@ -32,7 +32,7 @@ class UserPreferences @Inject constructor(
     val isRegistered: Flow<Boolean> = dataStore.data.map { it[KEY_IS_REGISTERED] ?: false }
     
     // UI settings
-    val themeMode: Flow<String> = dataStore.data.map { it[KEY_THEME_MODE] ?: THEME_DARK }
+    val themeMode: Flow<String> = dataStore.data.map { it[KEY_THEME_MODE] ?: THEME_SYSTEM }
     val messageStyle: Flow<String> = dataStore.data.map { it[KEY_MESSAGE_STYLE] ?: STYLE_IRC }
     val timestampFormat: Flow<String> = dataStore.data.map { it[KEY_TIMESTAMP_FORMAT] ?: TIMESTAMP_24H }
     val compactMode: Flow<Boolean> = dataStore.data.map { it[KEY_COMPACT_MODE] ?: false }

@@ -21,23 +21,23 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
 
-        // NDK placeholder — uncomment when native code is ready
-        // externalNativeBuild {
-        //     cmake {
-        //         cppFlags += "-std=c++20"
-        //         arguments += "-DANDROID_STL=c++_shared"
-        //         abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
-        //     }
-        // }
+        // NDK configuration for Signal Protocol crypto
+        externalNativeBuild {
+            cmake {
+                cppFlags += "-std=c++20"
+                arguments += "-DANDROID_STL=c++_shared"
+                abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+            }
+        }
     }
 
-    // NDK placeholder
-    // externalNativeBuild {
-    //     cmake {
-    //         path = file("src/main/cpp/CMakeLists.txt")
-    //         version = "3.22.1"
-    //     }
-    // }
+    // NDK build configuration
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
 
     buildTypes {
         release {

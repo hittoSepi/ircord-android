@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**IrssiCord** is an end-to-end encrypted chat and voice application for friend groups. It combines irssi's minimal terminal aesthetics with modern features: E2E encryption (Signal Protocol), link preview, voice rooms, and private calls.
+**IRCord Android** is the Android client for the IRCord end-to-end encrypted chat application. It uses a hybrid architecture with Kotlin/Jetpack Compose for the UI and C++ (NDK) for cryptographic operations and voice handling.
 
 **Architecture**: Client-server relay model — the server never sees plaintext messages.
 
@@ -12,68 +12,134 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 | Component | Choice | Rationale |
 |-----------|--------|-----------|
-| Language | C++20 | Performance, compatibility client/server |
-| Async I/O | Boost.Asio | Scalable event loop, cross-platform |
-| Serialization | Protobuf | Better tooling, schema evolution vs FlatBuffers |
-| TUI (client) | notcurses | Modern, true color, thread-safe, Unicode |
+| Language | Kotlin / C++20 | Kotlin for UI, C++ for shared crypto/voice |
+| UI Framework | Jetpack Compose | Modern declarative UI |
+| Async I/O | Kotlin Coroutines + OkHttp | Android-native networking |
+| Serialization | Protobuf Lite | Interop with server and desktop client |
 | E2E Crypto | libsignal-protocol-c + libsodium | Signal Protocol (X3DH + Double Ratchet) |
-| Voice | libdatachannel + libopus | WebRTC with ICE/DTLS-SRTP, lightweight |
-| Audio I/O | miniaudio | Header-only, cross-platform |
-| Database | SQLite (SQLiteCpp wrapper) | Embedded, minimal overhead |
-| Config | toml11 | Simple TOML parsing |
-| Logging | spdlog | Fast, structured logging |
-| Testing | Catch2 | Header-only test framework |
-| Build | CMake + vcpkg | Cross-platform build, manifest-mode deps |
+| Database | Room (SQLite) | Android Jetpack persistence |
+| Dependency Injection | Hilt | Standard Android DI |
+| Audio I/O | Oboe (NDK) | Low-latency Android audio API |
+| Build | Gradle + CMake/NDK | Android standard + native builds |
 
 ## Build Commands
 
 ```bash
-# Configure with vcpkg toolchain
-cmake -DCMAKE_TOOLCHAIN_FILE=[vcpkg root]/scripts/buildsystems/vcpkg.cmake ..
+# Debug build
+./gradlew assembleDebug
 
-# Build
-cmake --build .
+# Release build
+./gradlew assembleRelease
 
 # Run tests
-ctest
+./gradlew test
 
-# Specific configuration (Debug/Release, x64/x86)
-cmake --build . --config Release
+# Clean and rebuild
+./gradlew clean assembleDebug
 ```
 
-## High-Level Architecture
-
-### Server (target: Linux aarch64 / RPi)
+## Project Structure
 
 ```
-Listener (TLS/TCP) → Session Manager → Services:
-  ├── AuthSvc (challenge/identity)
-  ├── ChannelMgr (rooms, fanout)
-  ├── KeyStore (pre-keys, identity)
-  ├── VoiceSignal Svc (ICE relay)
-  └── OfflineQueue (TTL-bounded)
-         ↓
-     SQLite DB
+ircord-android/
+├── app/src/main/
+│   ├── java/fi/ircord/android/
+│   │   ├── MainActivity.kt           # Single Activity entry point
+│   │   ├── IrcordApp.kt              # Application class with Hilt
+│   │   │
+│   │   ├── di/                        # Hilt modules
+│   │   │   ├── AppModule.kt
+│   │   │   ├── DatabaseModule.kt
+│   │   │   └── NetworkModule.kt
+│   │   │
+│   │   ├── data/
+│   │   │   ├── local/                 # Room database
+│   │   │   │   ├── IrcordDatabase.kt
+│   │   │   │   ├── dao/
+│   │   │   │   └── entity/
+│   │   │   ├── remote/                # Network layer
+│   │   │   │   ├── IrcordSocket.kt
+│   │   │   │   ├── FrameCodec.kt
+│   │   │   │   └── ProtobufExt.kt     # Protobuf helpers
+│   │   │   └── repository/
+│   │   │       ├── CryptoRepository.kt     # NEW: Signal Protocol ops
+│   │   │       ├── MessageRepository.kt
+│   │   │       └── ChannelRepository.kt
+│   │   │
+│   │   ├── native/                    # JNI bridge to C++
+│   │   │   ├── NativeCrypto.kt        # Signal Protocol JNI
+│   │   │   └── NativeStore.kt         # Room-backed store for native
+│   │   │
+│   │   ├── ui/
+│   │   │   ├── theme/
+│   │   │   │   ├── Theme.kt           # Material3 theme
+│   │   │   │   ├── ThemeViewModel.kt  # NEW: Theme state management
+│   │   │   │   ├── Color.kt           # Light/Dark colors (Tokyo Night)
+│   │   │   │   └── ...
+│   │   │   ├── screen/
+│   │   │   │   ├── chat/
+│   │   │   │   ├── channels/
+│   │   │   │   ├── settings/
+│   │   │   │   │   ├── SettingsScreen.kt
+│   │   │   │   │   ├── SettingsViewModel.kt
+│   │   │   │   │   └── ThemeSelectorDialog.kt  # NEW: Theme picker
+│   │   │   │   └── ...
+│   │   │   └── navigation/
+│   │   │
+│   │   └── service/                   # Foreground services
+│   │       ├── IrcordService.kt
+│   │       └── VoiceService.kt
+│   │
+│   ├── cpp/                           # NDK native code
+│   │   ├── CMakeLists.txt
+│   │   ├── crypto/
+│   │   │   ├── crypto_engine.hpp/.cpp # Signal Protocol implementation
+│   │   │   ├── identity.cpp
+│   │   │   ├── signal_store.cpp
+│   │   │   └── group_session.cpp
+│   │   └── jni/
+│   │       └── jni_bridge.cpp         # JNI bindings
+│   │
+│   └── proto/                         # Shared protobuf schemas
+│       └── ircord.proto
 ```
 
-**Thread model**: `io_context` + thread pool, strands for per-session and per-channel serialization (no mutexes in hot path).
+## Key Features
 
-### Client
+### 1. Signal Protocol Encryption (NDK)
 
+The native layer (`cpp/`) implements:
+- **X3DH** (Extended Triple Diffie-Hellman) for session establishment
+- **Double Ratchet** for ongoing 1:1 message encryption
+- **Sender Keys** for group/channel encryption
+- **Argon2id + XChaCha20-Poly1305** for identity key encryption at rest
+
+```kotlin
+// Usage from Kotlin
+val cryptoRepository: CryptoRepository
+
+// Initialize with passphrase
+val success = cryptoRepository.initialize(userId, passphrase)
+
+// Encrypt (returns null if no session - request key bundle)
+val ciphertext = cryptoRepository.encrypt(recipientId, plaintext)
+
+// Decrypt
+val plaintext = cryptoRepository.decrypt(senderId, recipientId, ciphertext, type)
 ```
-Main Thread: notcurses render loop + input polling
-         │
-         ├─→ IO Thread (Boost.Asio): TLS recv/send, reconnect
-         ├─→ Preview Thread (libcurl): OG metadata fetch
-         └─→ Audio Thread (miniaudio callback): Opus encode/decode, jitter buffer
-```
 
-**Critical rule**: Only Main Thread calls notcurses functions. Other threads post UI updates via `AppState::post_ui()`.
+### 2. Theme Support
 
-## Wire Protocol
+Three theme modes available in Settings → Appearance → Theme:
+- **System default** (default) - Follows phone's theme
+- **Light** - Always light theme
+- **Dark** - Tokyo Night dark theme
 
-Length-prefixed framing over TCP/TLS:
+Managed by `ThemeViewModel` and applied in `MainActivity`.
 
+### 3. Wire Protocol
+
+Length-prefixed Protobuf frames over TLS/TCP:
 ```
 ┌──────────────┬────────────────────────┐
 │  4 bytes     │  N bytes               │
@@ -81,86 +147,47 @@ Length-prefixed framing over TCP/TLS:
 └──────────────┴────────────────────────┘
 ```
 
-Max message size: **64 KB** (enforced server-side).
-
-## Key Abstractions
-
-These interfaces enable technology swaps without major refactoring:
-
-```cpp
-class ITransport;        // TCP now, QUIC later
-class IRenderer;         // notcurses now, possible GUI later
-class IVoiceTransport;   // libdatachannel now, swappable
-class ISerializer;       // Protobuf now, maybe FlatBuffers later
-```
-
 ## Security Model
 
 - Server sees: IP addresses, who messages whom, timestamps
-- Server does NOT see: message content, file contents, voice audio (P2P mode), link preview content
+- Server does NOT see: message content, file contents, voice audio (P2P)
 - Auth: Ed25519 identity key challenge-response (not password-based)
 - E2E: Signal Protocol (X3DH initial + Double Ratchet for ongoing)
 - At-rest: Identity keys encrypted with Argon2id + XChaCha20-Poly1305
+- Screen capture: Configurable FLAG_SECURE
+- Root detection: Warn but don't block (friend group context)
 
-## Directory Structure (Planned)
+## Thread Model
 
 ```
-ircord-server/
-├── CMakeLists.txt
-├── vcpkg.json
-├── config/server.toml.example
-├── src/
-│   ├── main.cpp
-│   ├── server.hpp/.cpp          # io_context bootstrap, signal handling
-│   ├── config.hpp/.cpp          # TOML config loader
-│   ├── net/
-│   │   ├── listener.hpp/.cpp    # TLS TCP acceptor
-│   │   ├── session.hpp/.cpp     # Per-connection state machine
-│   │   └── tls_context.hpp/.cpp # SSL context factory
-│   ├── auth/
-│   ├── channel/
-│   ├── keys/
-│   ├── presence/
-│   ├── offline/
-│   ├── voice/
-│   ├── db/
-│   └── proto/                   # Shared with client
-└── test/
+Main Thread (UI)
+  └─ Compose recomposition, user input
 
-ircord-client/
-├── CMakeLists.txt
-├── vcpkg.json
-├── src/
-│   ├── main.cpp
-│   ├── app.hpp/.cpp             # Top-level init, event loop
-│   ├── state/
-│   │   ├── app_state.hpp/.cpp   # All app state, thread-safe
-│   │   ├── channel_state.hpp
-│   │   └── voice_state.hpp
-│   ├── ui/                      # notcurses rendering
-│   ├── net/
-│   ├── crypto/                  # Signal Protocol
-│   ├── voice/                   # libdatachannel + Opus
-│   ├── preview/                 # Link preview
-│   ├── db/
-│   ├── input/
-│   └── proto/
-└── resources/
+IO Dispatcher (Kotlin Coroutines)
+  ├─ TLS socket I/O
+  ├─ Room database operations
+  └─ Network framing
+
+Default Dispatcher
+  └─ Signal Protocol ops (1-10ms, not blocking UI)
+
+NDK Thread Pool (C++)
+  ├─ Crypto operations
+  └─ Voice engine
+
+Audio Thread (Oboe callback, realtime)
+  ├─ Audio capture
+  └─ Audio playback
 ```
 
-## Implementation Phases
-
-1. **Skeleton** - CMake, vcpkg, config, logger, listener, TLS accept, frame read/write
-2. **Auth + DB** - SQLite schema, Ed25519 challenge-response, registration
-3. **Chat relay** - Channel manager, fanout, 1:1 messages, offline queue
-4. **Key distribution** - Pre-key upload/fetch, OPK consumption
-5. **Presence + Ping** - Presence broadcast, PING/PONG timeout
-6. **Voice signaling** - ICE candidate relay, call invite/accept/reject
-7. **Hardening** - Rate limiting, input validation, fuzz testing
+Critical rules:
+1. **UI Thread never blocks** — all I/O in coroutines
+2. **JNI calls are expensive** (~1-5µs per call), batch when possible
+3. **Audio thread is realtime** — no allocations, no locks, no JNI
 
 ## Language Notes
 
-The architecture documentation files in the parent directory (`../ircord-*.md`) are in **Finnish**. Key terms:
+The architecture documentation files in `docs/` are in **Finnish**. Key terms:
 - *kanava* = channel
 - *viesti* = message
 - *käyttäjä* = user

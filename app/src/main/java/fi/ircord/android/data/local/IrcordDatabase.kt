@@ -15,8 +15,8 @@ import fi.ircord.android.data.local.entity.PeerIdentityEntity
         ChannelEntity::class,
         PeerIdentityEntity::class,
     ],
-    version = 1,
-    exportSchema = false,
+    version = 2,
+    exportSchema = true,
 )
 abstract class IrcordDatabase : RoomDatabase() {
     abstract fun messageDao(): MessageDao
