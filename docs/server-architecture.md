@@ -24,6 +24,10 @@
 │  │  /identity)│  │ fanout)  │  │ identity)  │  │ Svc  ││
 │  └────────────┘  └──────────┘  └────────────┘  └──────┘│
 │         │               │            │               │  │
+│  ┌────────────────────────────────────────────────────┐│
+│  │           OfflineStore (message queue)             ││
+│  │  - TTL: 7 days   - Max 100/user   - 100k total     ││
+│  └────────────────────────────────────────────────────┘│
 │         └───────────────┴────────────┴───────────────┘  │
 │                              │                          │
 │                    ┌─────────▼────────┐                 │
@@ -115,6 +119,8 @@ ircord-server/
 │   │
 │   ├── db/
 │   │   ├── database.hpp / .cpp         # SQLite wrapper (SQLiteCpp)
+│   │   ├── offline_store.hpp / .cpp    # Offline message queue
+│   │   ├── user_store.hpp / .cpp       # User/identity storage
 │   │   └── migrations.hpp / .cpp       # Schema versioning
 │   │
 │   └── proto/                          # Shared kanssa client
@@ -419,16 +425,16 @@ CREATE TABLE channel_members (
     PRIMARY KEY (channel_id, user_id)
 );
 
--- Offline-viestit (TTL: 7 päivää)
+-- Offline-viestit (TTL: 7 päivää, max 100/vastaanottaja)
 CREATE TABLE offline_messages (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     recipient_id    TEXT NOT NULL,
-    sender_id       TEXT NOT NULL,
-    ciphertext      BLOB NOT NULL,
-    ciphertext_type INTEGER NOT NULL,
-    created_at      INTEGER NOT NULL
+    payload         BLOB NOT NULL,         -- Serialized Envelope
+    stored_at       INTEGER NOT NULL,      -- Unix timestamp
+    expires_at      INTEGER NOT NULL       -- stored_at + 7 days
 );
-CREATE INDEX idx_offline_recipient ON offline_messages(recipient_id, created_at);
+CREATE INDEX idx_offline_recipient ON offline_messages(recipient_id, expires_at);
+CREATE INDEX idx_offline_expires ON offline_messages(expires_at);
 
 -- Kutsut (invite codes serverille)
 CREATE TABLE invites (
@@ -444,17 +450,184 @@ CREATE TABLE invites (
 **Offline-viestien siivous:**
 
 ```cpp
-// Aja kerran tunnissa SQLite-threadin kautta
-db_.execute(
-    "DELETE FROM offline_messages "
-    "WHERE created_at < ?",
-    unix_now() - 7 * 24 * 3600
-);
+// Aja kerran tunnissa (Server::cleanup_expired() timer)
+SQLite::Statement del(db_.get(),
+    "DELETE FROM offline_messages WHERE expires_at <= ?");
+del.bind(1, now_unix());
+del.exec();
+```
+
+**OfflineStore API:**
+
+```cpp
+namespace ircord::db {
+
+class OfflineStore {
+public:
+    // Tallenna viesti offline-käyttäjälle
+    // Palauttaa false jos käyttäjän jono täynnä (100 viestiä)
+    bool save(const std::string& recipient_id, 
+              const std::vector<uint8_t>& payload);
+    
+    // Hae ja poista kaikki viestit käyttäjältä (kutsutaan kirjautuessa)
+    std::vector<std::vector<uint8_t>> fetch_and_delete(
+        const std::string& recipient_id);
+    
+    // Siivoa vanhentuneet viestit
+    int cleanup_expired();
+    
+    // Tilastot
+    struct Stats {
+        int total_messages = 0;
+        int total_recipients = 0;
+        int64_t oldest_message_age_sec = 0;
+    };
+    Stats get_stats();
+    
+private:
+    static constexpr int64_t kTtlSeconds = 7 * 24 * 3600;  // 7 päivää
+    static constexpr int kMaxMessagesPerUser = 100;
+    static constexpr int kMaxTotalMessages = 100000;
+};
+
+} // namespace ircord::db
+```
+
+**Viestien reititys offline-tilaan:**
+
+```cpp
+// 1:1 DM (Session::handle_chat)
+auto recipient_session = server_ctx_.find_session(recipient);
+if (recipient_session) {
+    recipient_session->send(raw);  // Online → lähetä heti
+} else {
+    // Offline → tallenna jonoon
+    bool saved = offline_store_.save(recipient, payload);
+    if (!saved) {
+        send_error(4034, "Recipient offline queue full");
+    }
+}
+
+// Kanavaviestit (CommandHandler::broadcast_to_channel)
+for (const auto& user_id : channel.members) {
+    auto session = find_session_(user_id);
+    if (session) {
+        session->send(env);  // Online → lähetä
+    } else {
+        offline_store_.save(user_id, payload);  // Offline → tallenna
+    }
+}
+```
+
+**Toimitus reconnectissa:**
+
+```cpp
+// Session::handle_auth_response — onnistuneen autentikoinnin jälkeen
+auto offline_msgs = offline_store_.fetch_and_delete(user_id_);
+for (const auto& payload : offline_msgs) {
+    Envelope env;
+    if (env.ParseFromArray(payload.data(), payload.size())) {
+        send(env);  // Lähetä patjonnet viestit
+    }
+}
+if (!offline_msgs.empty()) {
+    spdlog::info("Delivered {} offline messages to {}", 
+        offline_msgs.size(), user_id_);
+}
 ```
 
 ---
 
-## 8. TLS Setup
+## 8. Rate Limiting & Abuse Prevention
+
+Serverissa on monikerroksinen rate limiting -järjestelmä:
+
+### Tasot
+
+| Taso | Raja | Kohde | Seuraus |
+|------|------|-------|---------|
+| **Yhteys** | 10/min | IP-osoite | Yhteys hylätään |
+| **Viestit** | 20/sec | Autentikoitu käyttäjä | Virhe 4290 |
+| **Komennot** | 30/min | Autentikoitu käyttäjä | Virhe + rikosmerkintä |
+| **Join** | 5/min | Autentikoitu käyttäjä | Virhe + rikosmerkintä |
+| **Abuse** | 5 rikosta | Autentikoitu käyttäjä | 30 min banni |
+
+### Toteutus
+
+```cpp
+// net/rate_limiter.hpp — Fixed-window rate limiter
+class RateLimiter {
+public:
+    RateLimiter(int max_tokens, std::chrono::duration window);
+    bool allow();  // Returns true if request is within rate
+};
+
+// Session: viesti-rate limit (20/sec)
+std::optional<RateLimiter> msg_rate_limiter_;
+
+// CommandHandler: komento- ja join-rate limit per user
+struct UserRateLimits {
+    RateLimiter command_limiter{30, std::chrono::minutes(1)};
+    RateLimiter join_limiter{5, std::chrono::minutes(1)};
+};
+
+// Abuse tracking
+struct AbuseRecord {
+    int violations = 0;
+    std::chrono::time_point first_violation;
+    bool banned = false;
+};
+```
+
+### Abuse Detection
+
+```cpp
+bool CommandHandler::track_abuse(const std::string& user_id) {
+    auto& record = abuse_records_[user_id];
+    record.violations++;
+    
+    // Reset if outside window (10 min)
+    if (now - record.first_violation > kViolationWindow) {
+        record.violations = 1;
+        record.first_violation = now;
+    }
+    
+    // Ban after 5 violations
+    if (record.violations >= kMaxViolations) {
+        record.banned = true;
+        return true;  // User banned
+    }
+    return false;
+}
+
+bool CommandHandler::is_abuser(const std::string& user_id) {
+    auto it = abuse_records_.find(user_id);
+    if (it == abuse_records_.end()) return false;
+    
+    // Check if ban expired (30 min)
+    if (it->second.banned) {
+        if (now - it->second.last_violation > kBanDuration) {
+            abuse_records_.erase(it);  // Remove expired ban
+            return false;
+        }
+        return true;  // Still banned
+    }
+    return false;
+}
+```
+
+### Virhekoodit
+
+| Koodi | Kuvaus |
+|-------|--------|
+| 4290 | Rate limit exceeded (messages) |
+| 4291 | Rate limit exceeded (commands) |
+| 4292 | Rate limit exceeded (joins) |
+| 4034 | Recipient offline queue full |
+
+---
+
+## 9. TLS Setup
 
 Serveri käyttää **self-signed sertifikaattia** sisäiseen käyttöön,
 tai Let's Encryptiä jos DynDNS-nimi on käytössä.
@@ -503,7 +676,7 @@ Ei tarvita CA-ketjua.
 
 ---
 
-## 9. Config (TOML)
+## 10. Config (TOML)
 
 ```toml
 [server]
@@ -527,6 +700,17 @@ ping_interval_sec = 30
 ping_timeout_sec  = 60
 opk_low_watermark = 10       # Client lähettää uusia kun alle tämän
 
+# Rate limiting
+msg_rate_per_sec  = 20       # Viestiä/sec per käyttäjä
+conn_rate_per_min = 10       # Yhteyttä/min per IP
+commands_per_min  = 30       # Komentoa/min per käyttäjä
+joins_per_min     = 5        # Kanavalle liittymistä/min per käyttäjä
+
+# Abuse detection
+abuse_threshold   = 5        # Rikkomusta ennen banniä
+abuse_window_min  = 10       # Aikaikkuna rikkomuksille
+ban_duration_min  = 30       # Bannin kesto minuutteina
+
 [voice]
 stun_server = "stun.example.com:3478"   # tai julkinen STUN
 
@@ -536,7 +720,7 @@ require_invite = true   # Suljettu serveri — vain kutsulla
 
 ---
 
-## 10. RPi-spesifiset asiat
+## 11. RPi-spesifiset asiat
 
 ### Käännös aarch64
 
@@ -614,7 +798,7 @@ Vaihtoehto: **DuckDNS** (ilmainen, yksinkertaisempi, ei tarvitse omaa domainia).
 
 ---
 
-## 11. Dependencies (vcpkg.json)
+## 12. Dependencies (vcpkg.json)
 
 ```json
 {
@@ -635,7 +819,7 @@ Vaihtoehto: **DuckDNS** (ilmainen, yksinkertaisempi, ei tarvitse omaa domainia).
 
 ---
 
-## 12. Toteutusjärjestys (server-first)
+## 13. Toteutusjärjestys (server-first)
 
 ```
 Vaihe 1 — Skeleton (1 vko)

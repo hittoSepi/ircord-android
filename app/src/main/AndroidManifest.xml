@@ -38,6 +38,35 @@
             android:foregroundServiceType="microphone|mediaPlayback"
             android:exported="false" />
 
+        <!-- Firebase Cloud Messaging Service -->
+        <service
+            android:name=".fcm.IrcordMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
+        <!-- Firebase Instance ID Service (for token refresh) -->
+        <service
+            android:name=".fcm.IrcordInstanceIdService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.INSTANCE_ID_EVENT" />
+            </intent-filter>
+        </service>
+
+        <!-- Set custom default icon for FCM notifications -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_notification" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/primary" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="ircord_messages" />
+
     </application>
 
 </manifest>

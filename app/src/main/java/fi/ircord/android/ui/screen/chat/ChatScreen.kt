@@ -29,6 +29,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import fi.ircord.android.ui.components.VoicePill
 import fi.ircord.android.ui.screen.chat.components.MessageBubble
 import fi.ircord.android.ui.screen.chat.components.MessageInput
+import fi.ircord.android.ui.security.SecureScreenEffect
 import fi.ircord.android.ui.theme.IrcordSpacing
 import fi.ircord.android.ui.theme.IrcordTheme
 
@@ -43,6 +44,9 @@ fun ChatScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val listState = rememberLazyListState()
+    
+    // Apply screen security when screen capture is disabled
+    SecureScreenEffect(secure = !state.screenCaptureEnabled)
 
     Scaffold(
         topBar = {

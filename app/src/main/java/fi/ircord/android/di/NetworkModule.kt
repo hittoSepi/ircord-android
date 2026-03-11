@@ -7,6 +7,7 @@ import dagger.hilt.components.SingletonComponent
 import fi.ircord.android.data.remote.FrameCodec
 import fi.ircord.android.data.remote.IrcordSocket
 import fi.ircord.android.data.remote.ReconnectPolicy
+import fi.ircord.android.security.pinning.PinRepository
 import javax.inject.Singleton
 
 @Module
@@ -26,5 +27,6 @@ object NetworkModule {
     fun provideIrcordSocket(
         frameCodec: FrameCodec,
         reconnectPolicy: ReconnectPolicy,
-    ): IrcordSocket = IrcordSocket(frameCodec, reconnectPolicy)
+        pinRepository: PinRepository,
+    ): IrcordSocket = IrcordSocket(frameCodec, reconnectPolicy, pinRepository)
 }

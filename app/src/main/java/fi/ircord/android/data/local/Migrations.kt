@@ -18,4 +18,11 @@ object Migrations {
             db.execSQL("ALTER TABLE peer_identities ADD COLUMN public_key TEXT DEFAULT NULL")
         }
     }
+    
+    /**
+     * All migrations in order.
+     */
+    val ALL_MIGRATIONS: Array<Migration> = arrayOf(
+        MIGRATION_1_2,
+    )
 }

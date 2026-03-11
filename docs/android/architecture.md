@@ -31,9 +31,10 @@
 │  │  NetClient  │  │  LocalStore   │  │  Native Bridge (JNI)   │ │
 │  │  (OkHttp /  │  │  (Room DB)    │  │  ┌──────────────────┐  │ │
 │  │   raw TLS   │  │  + SharedPrefs│  │  │  CryptoEngine    │  │ │
-│  │   socket)   │  │               │  │  │  (libsignal +    │  │ │
-│  └─────────────┘  └───────────────┘  │  │   libsodium)     │  │ │
-│                                       │  │  Argon2id +      │  │ │
+│  │   socket)   │  │  + FCM Token  │  │  │  (libsignal +    │  │ │
+│  │   FCM       │  │  + Cert Pins  │  │  │   libsodium)     │  │ │
+│  │  + CertPin  │  └───────────────┘  │  │  VoiceEngine     │  │ │
+│  └─────────────┘                     │  │  Argon2id +      │  │ │
 │                                       │  │  XChaCha20-P1305 │  │ │
 │                                       │  ├──────────────────┤  │ │
 │                                       │  │  Group Cipher    │  │ │
@@ -176,6 +177,118 @@ class NativeStore(context: Context, database: IrcordDatabase) : NativeCrypto.Sto
 
 ---
 
+## 3.5 JNI Bridge — Native Voice Layer (NEW)
+
+### VoiceEngine C++ komponentit
+
+```
+ircord-android/app/src/main/cpp/
+├── voice/
+│   ├── voice_engine.hpp/.cpp       # VoiceEngine foundation
+│   │                                    - PeerConnection management
+│   │                                    - WebRTC signaling
+│   │                                    - Call state machine
+│   │                                    - (Stubs: libdatachannel, Opus, Oboe)
+│   └── ...                           # TODO: Full implementation
+└── jni/
+    ├── jni_bridge.cpp                # Crypto JNI bindings
+    └── jni_voice_bridge.cpp          # NEW: Voice JNI bindings
+```
+
+### JNI Interface (Kotlin-puoli)
+
+```kotlin
+object NativeVoice {
+    init { System.loadLibrary("ircord-native") }
+
+    // Initialization
+    external fun init(sampleRate: Int, framesPerBuffer: Int): Boolean
+    external fun destroy()
+
+    // Room/Voice Channel
+    external fun joinRoom(channelId: String, isPrivateCall: Boolean)
+    external fun leaveRoom()
+    external fun isInRoom(): Boolean
+    external fun getParticipants(): Array<String>
+
+    // Private Calls
+    external fun call(peerId: String)
+    external fun acceptCall()
+    external fun declineCall()
+    external fun hangup()
+
+    // Audio Controls
+    external fun setMuted(muted: Boolean)
+    external fun setDeafened(deafened: Boolean)
+
+    // Signaling
+    external fun onVoiceSignal(fromUser: String, signalType: Int, data: ByteArray)
+
+    // Stats
+    external fun getAudioStats(): AudioStats
+
+    // Callbacks to Kotlin
+    interface VoiceCallback {
+        fun onIceCandidate(peerId: String, candidate: ByteArray)
+        fun onPeerJoined(peerId: String)
+        fun onPeerLeft(peerId: String)
+        fun onAudioLevel(peerId: String, level: Float)
+        fun onIncomingCall(peerId: String, channelId: String)
+        fun onCallAccepted(peerId: String)
+        fun onCallDeclined(peerId: String, reason: String)
+        fun onConnectionStateChanged(state: ConnectionState)
+    }
+}
+```
+
+### VoiceRepository
+
+`VoiceRepository` käyttää `NativeVoice` JNI-rajapintaa ja tarjoaa
+korkean tason API:n ViewModeleille:
+
+```kotlin
+@Singleton
+class VoiceRepository @Inject constructor() : NativeVoice.VoiceCallback {
+    
+    fun joinRoom(channelId: String) { NativeVoice.joinRoom(channelId, false) }
+    fun leaveRoom() { NativeVoice.leaveRoom() }
+    fun toggleMute() { NativeVoice.setMuted(!isMuted) }
+    fun call(peerId: String) { NativeVoice.call(peerId) }
+    fun acceptCall() { NativeVoice.acceptCall() }
+    
+    // Signal processing from server
+    fun onVoiceSignal(fromUser: String, type: Int, data: ByteArray) {
+        NativeVoice.onVoiceSignal(fromUser, type, data)
+    }
+    
+    // Callbacks implement native → Kotlin events
+    override fun onPeerJoined(peerId: String) { ... }
+    override fun onPeerLeft(peerId: String) { ... }
+    override fun onAudioLevel(peerId: String, level: Float) { ... }
+}
+```
+
+### Signaalityypit (WebRTC Signaling)
+
+| Type | Arvo | Kuvaus |
+|------|------|--------|
+| OFFER | 1 | WebRTC offer SDP |
+| ANSWER | 2 | WebRTC answer SDP |
+| ICE_CANDIDATE | 3 | ICE candidate |
+| BYE | 4 | Puhelun lopetus |
+| CALL_REQUEST | 5 | Saapuva puhelu |
+| CALL_ACCEPT | 6 | Puhelu hyväksytty |
+| CALL_DECLINE | 7 | Puhelu hylätty |
+
+### TODO: Täydellinen toteutus
+
+- [ ] **libdatachannel** - WebRTC PeerConnection ja data channel
+- [ ] **Opus** - Audio encoding/decoding
+- [ ] **Oboe** - Low-latency audio capture/playback
+- [ ] **ICE/DTLS-SRTP** - Connection establishment ja encryption
+
+---
+
 ## 4. Teema-järjestelmä (NEW)
 
 ### ThemeViewModel
@@ -238,11 +351,30 @@ ircord-android/
 │   │   │   ├── remote/
 │   │   │   │   └── ProtobufExt.kt       # NEW: Protobuf helpers
 │   │   │   └── repository/
-│   │   │       └── CryptoRepository.kt  # NEW: High-level crypto API
+│   │   │       ├── CryptoRepository.kt  # NEW: High-level crypto API
+│   │   │       └── VoiceRepository.kt   # Updated: NativeVoice calls
 │   │   │
 │   │   ├── native/                      # JNI bridge
 │   │   │   ├── NativeCrypto.kt          # Päivitetty täysi toteutus
-│   │   │   └── NativeStore.kt           # NEW: Room-backed store
+│   │   │   ├── NativeStore.kt           # NEW: Room-backed store
+│   │   │   └── NativeVoice.kt           # NEW: Voice engine JNI
+│   │   │
+│   │   ├── security/                    # Security features
+│   │   │   ├── pinning/                 # NEW: Certificate pinning
+│   │   │   │   ├── CertificatePin.kt       # Pin data class
+│   │   │   │   ├── CertificatePinner.kt    # OkHttp interceptor
+│   │   │   │   └── PinRepository.kt        # Pin storage
+│   │   │   ├── database/                # NEW: Database encryption
+│   │   │   │   └── DatabaseEncryptionManager.kt  # Key management
+│   │   │   └── biometric/               # NEW: Biometric auth
+│   │   │       ├── BiometricAuthManager.kt     # Auth manager
+│   │   │       ├── BiometricCryptoManager.kt   # Crypto wrapper
+│   │   │       └── BiometricPrompt.kt          # UI component
+│   │   │
+│   │   ├── fcm/                         # NEW: Firebase Cloud Messaging
+│   │   │   ├── IrcordMessagingService.kt   # FCM message handler
+│   │   │   ├── IrcordInstanceIdService.kt  # Token refresh
+│   │   │   └── FcmRepository.kt            # Token management
 │   │   │
 │   │   ├── ui/
 │   │   │   ├── theme/
@@ -250,9 +382,14 @@ ircord-android/
 │   │   │   │   ├── Color.kt             # Light + Dark (Tokyo Night)
 │   │   │   │   └── ...
 │   │   │   └── screen/
-│   │   │       └── settings/
-│   │   │           ├── SettingsScreen.kt
-│   │   │           └── ThemeSelectorDialog.kt  # NEW: Teeman valinta
+│   │   │       ├── settings/
+│   │   │       │   ├── SettingsScreen.kt
+│   │   │       │   ├── ThemeSelectorDialog.kt      # NEW: Teeman valinta
+│   │   │       │   ├── CertificatePinningScreen.kt # NEW: Cert pinning UI
+│   │   │       │   └── CertificatePinningViewModel.kt
+│   │   │       └── notifications/
+│   │   │           ├── NotificationSettingsScreen.kt  # NEW: FCM settings
+│   │   │           └── NotificationSettingsViewModel.kt
 │   │   │
 │   │   └── di/
 │   │       └── DatabaseModule.kt        # Päivitetty: NativeStore provider
@@ -262,8 +399,12 @@ ircord-android/
 │   │   ├── crypto/
 │   │   │   ├── crypto_engine.hpp/.cpp   # Täysi Signal Protocol
 │   │   │   └── ...
+│   │   ├── voice/
+│   │   │   ├── voice_engine.hpp/.cpp    # NEW: VoiceEngine foundation
+│   │   │   └── ...                      # TODO: Full WebRTC impl
 │   │   └── jni/
-│   │       └── jni_bridge.cpp           # JNI bindings
+│   │       ├── jni_bridge.cpp           # Crypto JNI bindings
+│   │       └── jni_voice_bridge.cpp     # NEW: Voice JNI bindings
 │   │
 │   └── proto/
 │       └── ircord.proto                 # Jaettu .proto
@@ -320,7 +461,9 @@ Server relay → recipient
 | Screen capture | FLAG_SECURE chat-näkymässä (konfiguroitava Settingsissä) |
 | Identity key extraction | Argon2id + XChaCha20-Poly1305, Android Keystore hardware-backed |
 | Session state | SharedPreferences + EncryptedSharedPreferences |
-| Network intercept | Certificate pinning (OkHttp CertificatePinner) |
+| Database encryption | SQLCipher, 256-bit key, Android Keystore backed |
+| Identity key access | Optional biometric auth (fingerprint/face) |
+| Network intercept | Certificate pinning (OkHttp + custom pinner) |
 | Backup leak | `android:allowBackup="false"` |
 | Clipboard snoop | Clear clipboard 30s after Safety Number copy |
 | Push content leak | FCM: vain "wakeup" — ei viestin sisältöä |
@@ -344,6 +487,250 @@ std::vector<uint8_t> CryptoEngine::encryptIdentityPriv(
         plaintext=priv_key, key=derived_key, nonce=random)
 }
 ```
+
+### Certificate Pinning
+
+IRCord Android käyttää **certificate pinning** -tekniikkaa varmistaakseen, 
+että sovellus kommunikoi vain oikean serverin kanssa.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Certificate Pinning                      │
+│                                                             │
+│  1. Admin extractaa serverin sertifikaatin julkisen avaimen │
+│  2. Pin (SHA-256 hash) lisätään sovellukseen                │
+│  3. Yhteydenotossa verrataan serverin pinniä konfiguroituun │
+│  4. Jos ei match → yhteys katkaistaan (MITM-suoja)          │
+│                                                             │
+│  Backup pin: Sallii sertifikaatin uusimisen                 │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### Toteutus
+
+```kotlin
+// security/pinning/CertificatePin.kt
+data class CertificatePin(
+    val pattern: String,        // "*.example.com"
+    val pin: String,            // Base64 SHA-256 hash
+    val isBackupPin: Boolean,   // Varmuuskopio uudelle sertifikaatille
+)
+
+// security/pinning/CertificatePinner.kt
+class CertificatePinner(
+    config: PinningConfig,
+    onPinFailure: ((hostname, peerPins) -> Unit)?
+) : Interceptor {
+    override fun intercept(chain: Chain): Response {
+        val response = chain.proceed(chain.request())
+        // Validoi sertifikaatti
+        if (!validatePin(chain.request().url.host, certificate)) {
+            throw SSLPeerUnverifiedException("Pin mismatch")
+        }
+        return response
+    }
+}
+
+// security/pinning/PinRepository.kt — Tallennus DataStoreen
+class PinRepository {
+    suspend fun addPin(hostname: String, pin: String)
+    suspend fun removePin(hostname: String, pin: String)
+    val pinningConfig: Flow<PinningConfig>
+}
+```
+
+#### Käyttöliittymä
+
+Asetukset → Turvallisuus → Certificate Pinning:
+- Näytä konfiguroidut pinnit
+- Lisää uusi pin (hostname + SHA-256 hash)
+- Merkitse backup-pin
+- Poista vanhat pinnit
+
+#### Pinin generointi serveriltä
+
+```bash
+# Extract public key from certificate
+openssl x509 -in server.crt -pubkey -noout | \
+  openssl pkey -pubin -outform der | \
+  openssl dgst -sha256 -binary | \
+  openssl enc -base64
+
+# Output: rE2/zFR1L5z0U4Y8Jq/x8O3K8n9...
+```
+
+### Database Encryption (SQLCipher)
+
+IRCord salaa Room-tietokannan SQLCipher-kirjastolla, jotta viestit ja 
+muut arkaluonteiset tiedot ovat suojattuja laitteella (at-rest encryption).
+
+#### Arkkitehtuuri
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    SQLCipher Encryption                     │
+│                                                             │
+│  1. Satunnainen 256-bittinen avain generoidaan              │
+│  2. Avain salataan Android Keystoren master-avaimella       │
+│  3. Salattu avain tallennetaan EncryptedSharedPreferencesiin│
+│  4. SQLCipher käyttää avainta tietokannan salaukseen        │
+│  5. Ilman avainta tietokanta on lukukelvoton                │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### Toteutus
+
+```kotlin
+// security/database/DatabaseEncryptionManager.kt
+class DatabaseEncryptionManager(context: Context) {
+    
+    // Hae tai luo salausavio
+    suspend fun getOrCreateKey(): String {
+        // 1. Tarkista onko avain jo olemassa
+        // 2. Jos ei → generoi 256-bittinen satunnainen avain
+        // 3. Salaa avain Android Keystoren avaimella
+        // 4. Tallenna EncryptedSharedPreferencesiin
+    }
+    
+    private fun generateRandomKey(): String {
+        // 32 tavua (256 bittiä) hex-muodossa
+        return secureRandomBytes(32).toHexString()
+    }
+}
+
+// data/local/EncryptedDatabaseFactory.kt
+object EncryptedDatabaseFactory {
+    fun <T : RoomDatabase> create(context, klass, name): T {
+        val key = DatabaseEncryptionManager(context).getOrCreateKey()
+        val passphrase = hexToBytes(key)
+        
+        // SQLCipher factory
+        val factory = SupportFactory(passphrase)
+        
+        return Room.databaseBuilder(context, klass, name)
+            .openHelperFactory(factory)  // <-- SQLCipher
+            .build()
+    }
+}
+```
+
+#### Tietoturvaominaisuudet
+
+| Ominaisuus | Toteutus |
+|------------|----------|
+| **Avaimen pituus** | 256 bittiä (AES-256) |
+| **Avaimen tallennus** | Android Keystore + EncryptedSharedPreferences |
+| **Hardware-backed** | Käytössä kun saatavilla (TEE/SE) |
+| **Avaimen kierto** | Mahdollista (vaatii tietokannan uudelleensalauksen) |
+| **Biometrinen lukitus** | Tuettu (asetettavissa MasterKey:ssä) |
+
+#### Rakenne
+
+```
+security/
+└── database/
+    └── DatabaseEncryptionManager.kt    # Avaimen hallinta
+data/
+├── local/
+│   ├── EncryptedDatabaseFactory.kt    # SQLCipher-factory
+│   └── IrcordDatabase.kt              # Room-database
+└── di/
+    └── DatabaseModule.kt              # Hilt-moduuli
+```
+
+#### Käyttö
+
+```kotlin
+// DatabaseModule.kt — Automaginen salaus
+@Provides
+@Singleton
+fun provideDatabase(@ApplicationContext context: Context): IrcordDatabase {
+    return EncryptedDatabaseFactory.create(
+        context = context,
+        klass = IrcordDatabase::class.java,
+        name = "ircord.db"
+    )
+}
+```
+
+Tietokanta on nyt täysin salattu — ilman oikeaa avainta tiedostoa ei voi lukea.
+
+### Biometrinen autentikointi (Identity Key)
+
+IRCord tukee valinnaista **biometristä autentikointia** identiteettiavaimen 
+käytölle. Tämä vaatii käyttäjältä sormenjälki- tai kasvotunnistuksen ennen 
+kryptografisia operaatioita.
+
+#### Toiminta
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                 Biometric Authentication                    │
+│                                                             │
+│  1. Käyttäjä avaa sovelluksen                               │
+│  2. Tarkistetaan onko biometrinen auth käytössä             │
+│  3. Jos käytössä → näytetään BiometricPrompt                │
+│  4. Käyttäjä tunnistautuu sormenjälkillä/kasvoilla          │
+│  5. Onnistuessa → avataan identiteettiavain                 │
+│  6. Epäonnistuessa → estetään pääsy                         │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### Toteutus
+
+```kotlin
+// security/biometric/BiometricAuthManager.kt
+class BiometricAuthManager(context: Context) {
+    
+    // Tarkista saatavuus
+    fun canAuthenticate(): BiometricAvailability
+    
+    // Suorita autentikointi
+    suspend fun authenticate(
+        activity: FragmentActivity,
+        title: String,
+        subtitle: String,
+    ): Boolean
+    
+    // Käyttäjän asetus
+    fun isBiometricEnabled(): Boolean
+    fun setBiometricEnabled(enabled: Boolean)
+}
+
+// security/biometric/BiometricCryptoManager.kt
+class BiometricCryptoManager(
+    private val biometricAuthManager: BiometricAuthManager,
+) {
+    // Suorita krypto-operaatio biometrisellä suojauksella
+    suspend fun <T> performWithBiometric(
+        activity: FragmentActivity,
+        operation: suspend () -> T,
+    ): T?
+    
+    // Erikoistapaukset
+    suspend fun initializeWithBiometric(...): Boolean
+    suspend fun decryptWithBiometric(...): ByteArray?
+    suspend fun signWithBiometric(...): ByteArray?
+}
+```
+
+#### Turvallisuusominaisuudet
+
+| Ominaisuus | Toteutus |
+|------------|----------|
+| **Biometrinen data** | Ei koskaan poistu laitteesta |
+| **Tallennus** | Android Keystore hardware-backed |
+| **Varmuus** | Strong biometric (Class 3) vaaditaan |
+| **Fallback** | Salasana aina vaihtoehtona |
+
+#### Käyttöliittymä
+
+Asetukset → Turvallisuus → Biometrinen autentikointi:
+- Ota käyttöön/poista käytöstä
+- Testaa toimivuus
+- Näytä status
 
 ---
 
@@ -421,10 +808,77 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
 
 ---
 
-## 10. TODO / Tulevat parannukset
+## 10. Push Notifications (FCM) — NEW
 
-- [ ] VoiceEngine JNI-toteutus (libdatachannel + Opus + Oboe)
-- [ ] FCM push-notifikaatiot offline-viesteille
-- [ ] Certificate pinning tuotantoserverille
-- [ ] SQLCipher Room-tietokannan salaamiseen
-- [ ] Biometric auth identity-avaimelle
+### Arkkitehtuuri
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Firebase Cloud Messaging                  │
+│                         (Google)                             │
+└──────────────┬──────────────────────────────────────────────┘
+               │ FCM Token, Push payload
+               ▼
+┌─────────────────────────────────────────────────────────────┐
+│              IrcordMessagingService                          │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │  onMessageReceived()                                  │  │
+│  │  ├── "wakeup" → trigger background sync               │  │
+│  │  ├── "message" → show notification (no content)       │  │
+│  │  ├── "call" → show incoming call notification         │  │
+│  │  └── "channel_invite" → show invite notification      │  │
+│  └──────────────────────────────────────────────────────┘  │
+└──────────────┬──────────────────────────────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    FcmRepository                             │
+│  - Token registration/unregistration                        │
+│  - Local token storage (DataStore)                          │
+│  - Notification settings management                         │
+│  - App lifecycle tracking (foreground/background)           │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Tietoturva & Yksityisyys
+
+| Ominaisuus | Toteutus |
+|------------|----------|
+| Viestin sisältö | **Ei lähetetä** FCM:ssä — vain "wakeup"-signaali |
+| Notification preview | Vain lähettäjä ja kanava, ei viestin sisältöä |
+| Token storage | Local DataStore, rekisteröity serverille autentikoinnin jälkeen |
+| Token refresh | Automattinen, IrcordMessagingService hoitaa |
+
+### Protokollaviestit
+
+```protobuf
+// Client → Server: Register FCM token
+message FcmTokenRegistration {
+  string token = 1;        // FCM registration token
+  string platform = 2;     // "android"
+  string device_name = 3;  // Optional device identifier
+}
+
+// Client → Server: Unregister token
+message FcmUnregister {
+  string token = 1;        // Token to unregister
+}
+```
+
+### Käyttöliittymä
+
+`NotificationSettingsScreen.kt` — Asetukset → Ilmoitukset:
+- Push-notifikaatiot päälle/pois
+- Maininta-notifikaatiot (@username)
+- Puhelu-notifikaatiot
+- Android 13+: Runtime permission käsittely
+
+---
+
+## 11. TODO / Tulevat parannukset
+
+- [~] VoiceEngine JNI-toteutus (foundation valmis, libdatachannel + Opus + Oboe jäljellä)
+- [x] FCM push-notifikaatiot offline-viesteille
+- [x] Certificate pinning tuotantoserverille
+- [x] SQLCipher Room-tietokannan salaamiseen
+- [x] Biometric auth identity-avaimelle (optionaalinen)

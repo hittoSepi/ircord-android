@@ -1,5 +1,8 @@
 package fi.ircord.android.data.remote
 
+import fi.ircord.android.security.pinning.CertificatePinEventListener
+import fi.ircord.android.security.pinning.CertificatePinner
+import fi.ircord.android.security.pinning.PinRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -11,6 +14,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
@@ -24,20 +28,18 @@ import java.security.cert.X509Certificate
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
-import javax.net.ssl.SSLContext
-import javax.net.ssl.TrustManager
-import javax.net.ssl.X509TrustManager
 
 enum class ConnectionState { DISCONNECTED, CONNECTING, CONNECTED }
 
 /**
- * TLS TCP socket with length-prefixed framing.
+ * TLS TCP socket with length-prefixed framing and certificate pinning.
  * Uses OkHttp for TLS support and handles reconnection via ReconnectPolicy.
  */
 @Singleton
 class IrcordSocket @Inject constructor(
     private val frameCodec: FrameCodec,
     private val reconnectPolicy: ReconnectPolicy,
+    private val pinRepository: PinRepository,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     
@@ -52,10 +54,9 @@ class IrcordSocket @Inject constructor(
     private var currentPort: Int = 0
     private var shouldReconnect = true
     
-    private val client: OkHttpClient by lazy {
-        createOkHttpClient()
-    }
-
+    // Certificate pinning failure callback
+    var onCertificatePinFailure: ((hostname: String, peerPins: List<String>) -> Unit)? = null
+    
     suspend fun connect(host: String, port: Int) {
         if (_connectionState.value == ConnectionState.CONNECTED || 
             _connectionState.value == ConnectionState.CONNECTING) {
@@ -72,6 +73,9 @@ class IrcordSocket @Inject constructor(
             // Determine WebSocket vs raw TLS based on port
             val protocol = if (port == 443 || port == 8443) "wss" else "ws"
             val url = "$protocol://$host:$port/ircord"
+            
+            // Create client with certificate pinning
+            val client = createOkHttpClient(host)
             
             val request = Request.Builder()
                 .url(url)
@@ -114,13 +118,44 @@ class IrcordSocket @Inject constructor(
         scope.cancel()
     }
     
-    private fun createOkHttpClient(): OkHttpClient {
-        return OkHttpClient.Builder()
+    private suspend fun createOkHttpClient(hostname: String): OkHttpClient {
+        val pinningConfig = pinRepository.pinningConfig.first()
+        
+        val builder = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(0, TimeUnit.SECONDS) // No timeout for WebSocket
             .writeTimeout(30, TimeUnit.SECONDS)
             .pingInterval(30, TimeUnit.SECONDS)
-            .build()
+        
+        // Add certificate pinning if configured for this hostname
+        if (pinningConfig.findPinsForHostname(hostname).isNotEmpty()) {
+            Timber.d("Certificate pinning enabled for $hostname")
+            
+            val pinner = CertificatePinner(
+                config = pinningConfig,
+                onPinFailure = { host, peerPins ->
+                    Timber.w("Certificate pinning failed for $host")
+                    onCertificatePinFailure?.invoke(host, peerPins)
+                }
+            )
+            
+            val eventListener = CertificatePinEventListener(
+                config = pinningConfig,
+                onPinValidated = { host, pin ->
+                    Timber.d("Certificate validated for $host with pin: ${pin.take(16)}...")
+                },
+                onPinFailure = { host, peerPins ->
+                    onCertificatePinFailure?.invoke(host, peerPins)
+                }
+            )
+            
+            builder.addInterceptor(pinner)
+            builder.eventListener(eventListener)
+        } else {
+            Timber.d("No certificate pins configured for $hostname")
+        }
+        
+        return builder.build()
     }
     
     private fun createWebSocketListener(): WebSocketListener {

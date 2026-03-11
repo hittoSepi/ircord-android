@@ -39,6 +39,8 @@ import fi.ircord.android.ui.theme.IrcordTheme
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
+    onNavigateToBiometric: () -> Unit = {},
+    onNavigateToCertificatePinning: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -115,6 +117,8 @@ fun SettingsScreen(
 
             SectionTitle("SECURITY")
             SettingsToggle("Screen capture", state.screenCapture, viewModel::setScreenCapture)
+            SettingsRow("Biometric auth", "", onClick = onNavigateToBiometric)
+            SettingsRow("Certificate pinning", "", onClick = onNavigateToCertificatePinning)
             SettingsRow("Verified peers", "")
             SettingsRow("Blocked users", "")
 

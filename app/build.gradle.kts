@@ -5,6 +5,7 @@ plugins {
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
     alias(libs.plugins.protobuf)
+    alias(libs.plugins.gms)
 }
 
 android {
@@ -140,4 +141,23 @@ dependencies {
 
     // DataStore
     implementation(libs.datastore.preferences)
+    
+    // Firebase
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.messaging)
+    
+    // Accompanist
+    implementation(libs.accompanist.permissions)
+    
+    // WorkManager
+    implementation(libs.work.runtime)
+    
+    // SQLCipher for database encryption
+    implementation(libs.sqlcipher)
+    
+    // AndroidX Security for encrypted preferences
+    implementation(libs.security.crypto)
+    
+    // Biometric authentication
+    implementation(libs.biometric)
 }

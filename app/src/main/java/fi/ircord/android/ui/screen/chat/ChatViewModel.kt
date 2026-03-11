@@ -34,6 +34,7 @@ data class ChatUiState(
     val voiceActive: Boolean = false,
     val voiceChannelName: String? = null,
     val voiceParticipantCount: Int = 0,
+    val screenCaptureEnabled: Boolean = false,
 )
 
 @HiltViewModel
@@ -60,6 +61,11 @@ class ChatViewModel @Inject constructor(
         viewModelScope.launch {
             val nickname = userPreferences.nickname.first() ?: ""
             _uiState.update { it.copy(currentUserId = nickname) }
+        }
+
+        // Observe screen capture setting
+        userPreferences.screenCapture.launchIn(viewModelScope) { enabled ->
+            _uiState.update { it.copy(screenCaptureEnabled = enabled) }
         }
 
         // Combine repository flows to update UI

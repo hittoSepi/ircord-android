@@ -35,10 +35,12 @@ endif()
 # Native crypto library
 add_library(ircord-native SHARED
     jni/jni_bridge.cpp
+    jni/jni_voice_bridge.cpp
     crypto/crypto_engine.cpp
     crypto/identity.cpp
     crypto/signal_store.cpp
     crypto/group_session.cpp
+    voice/voice_engine.cpp
 )
 
 target_include_directories(ircord-native PRIVATE
