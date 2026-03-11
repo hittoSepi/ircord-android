@@ -8,7 +8,9 @@ import kotlinx.coroutines.flow.onEach
 import dagger.hilt.android.lifecycle.HiltViewModel
 import fi.ircord.android.data.local.entity.MessageEntity
 import fi.ircord.android.data.local.preferences.UserPreferences
+import fi.ircord.android.data.remote.AuthState
 import fi.ircord.android.data.remote.ConnectionState
+import fi.ircord.android.data.remote.IrcordConnectionManager
 import fi.ircord.android.data.remote.IrcordSocket
 import fi.ircord.android.data.repository.FileRepository
 import fi.ircord.android.data.repository.MessageRepository
@@ -51,6 +53,7 @@ class ChatViewModel @Inject constructor(
     private val fileRepository: FileRepository,
     private val userPreferences: UserPreferences,
     private val ircordSocket: IrcordSocket,
+    private val connectionManager: IrcordConnectionManager,
 ) : ViewModel() {
 
     private val channelId: String = savedStateHandle["channelId"] ?: "general"
@@ -64,17 +67,11 @@ class ChatViewModel @Inject constructor(
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
 
     init {
-        // Load current user and connect to server
+        // Load current user and start connection + auth
         viewModelScope.launch {
             val nickname = userPreferences.nickname.first() ?: ""
             _uiState.update { it.copy(currentUserId = nickname) }
-
-            // Connect socket using saved server settings
-            val address = userPreferences.serverAddress.first()
-            val port = userPreferences.port.first()
-            if (!address.isNullOrBlank() && ircordSocket.connectionState.value == ConnectionState.DISCONNECTED) {
-                ircordSocket.connect(address, port)
-            }
+            connectionManager.start()
         }
 
         // Observe screen capture setting
@@ -121,9 +118,11 @@ class ChatViewModel @Inject constructor(
         val state = _uiState.value
         val text = state.inputText.trim()
         if (text.isEmpty()) return
-        
+
+        val recipientId = "#$channelId" // channels prefixed with #
+
         viewModelScope.launch {
-            // Create message entity
+            // Save to local DB immediately for UI feedback
             val entity = MessageEntity(
                 channelId = channelId,
                 senderId = state.currentUserId.ifEmpty { "me" },
@@ -131,18 +130,11 @@ class ChatViewModel @Inject constructor(
                 timestamp = System.currentTimeMillis(),
                 sendStatus = SendStatus.SENDING.name.lowercase(),
             )
-            
-            // Save to local database
             val id = messageRepository.insert(entity)
-            
-            // Clear input
             _uiState.update { it.copy(inputText = "") }
-            
-            // Try to send over network
+
             try {
-                // TODO: Actually encrypt and send via IrcordSocket when protocol is ready
-                // For now, mark as sent after a brief delay to simulate network
-                kotlinx.coroutines.delay(500)
+                connectionManager.sendChat(recipientId, text)
                 messageRepository.updateSendStatus(id, SendStatus.SENT.name.lowercase())
             } catch (e: Exception) {
                 messageRepository.updateSendStatus(id, SendStatus.FAILED.name.lowercase())
@@ -152,14 +144,9 @@ class ChatViewModel @Inject constructor(
     
     fun retryMessage(messageId: Long) {
         viewModelScope.launch {
-            // Retry sending a failed message
             messageRepository.updateSendStatus(messageId, SendStatus.SENDING.name.lowercase())
-            try {
-                kotlinx.coroutines.delay(500)
-                messageRepository.updateSendStatus(messageId, SendStatus.SENT.name.lowercase())
-            } catch (e: Exception) {
-                messageRepository.updateSendStatus(messageId, SendStatus.FAILED.name.lowercase())
-            }
+            // TODO: retrieve message content and re-send via connectionManager
+            messageRepository.updateSendStatus(messageId, SendStatus.FAILED.name.lowercase())
         }
     }
     

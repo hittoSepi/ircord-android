@@ -4,6 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import fi.ircord.android.data.local.preferences.UserPreferences
+import fi.ircord.android.native.NativeCrypto
+import fi.ircord.android.native.NativeStore
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -11,11 +14,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.security.KeyPair
-import java.security.KeyPairGenerator
+import kotlinx.coroutines.withContext
 import java.security.MessageDigest
-import java.security.SecureRandom
-import java.security.Signature
 import javax.inject.Inject
 
 data class SetupUiState(
@@ -30,8 +30,8 @@ data class SetupUiState(
         SetupStep("Identity key pair", StepStatus.PENDING),
         SetupStep("Signed pre-key", StepStatus.PENDING),
         SetupStep("One-time pre-keys (0/100)", StepStatus.PENDING),
-        SetupStep("Uploading to server", StepStatus.PENDING),
-        SetupStep("Joining channels", StepStatus.PENDING),
+        SetupStep("Saving settings", StepStatus.PENDING),
+        SetupStep("Ready to connect", StepStatus.PENDING),
     ),
     val fingerprint: String? = null,
     val error: String? = null,
@@ -44,6 +44,7 @@ enum class StepStatus { PENDING, IN_PROGRESS, DONE }
 @HiltViewModel
 class SetupViewModel @Inject constructor(
     private val userPreferences: UserPreferences,
+    private val nativeStore: NativeStore,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SetupUiState())
@@ -51,11 +52,10 @@ class SetupViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            // Pre-fill with saved values if any
             val savedAddress = userPreferences.serverAddress.first()
             val savedPort = userPreferences.port.first()
             val savedNickname = userPreferences.nickname.first()
-            
+
             _uiState.update { state ->
                 state.copy(
                     serverAddress = savedAddress ?: "",
@@ -77,42 +77,53 @@ class SetupViewModel @Inject constructor(
             _uiState.update { it.copy(isGenerating = true, error = null) }
 
             try {
-                // Step 1: Generate identity key pair
+                // Step 1: Initialize native crypto engine (generates Ed25519 identity key pair)
                 updateStep(0, StepStatus.IN_PROGRESS)
-                val (identityKeyPair, fingerprint) = generateIdentityKeyPair()
-                delay(200) // Small delay for UI feedback
+                val initOk = withContext(Dispatchers.Default) {
+                    NativeCrypto.nativeInit(nativeStore, state.nickname, "")
+                }
+                if (!initOk) throw RuntimeException("Failed to initialize crypto engine")
+                delay(200)
                 updateStep(0, StepStatus.DONE)
 
-                // Step 2: Generate signed pre-key
+                // Get fingerprint from the generated identity public key
+                val identityPub = NativeCrypto.identityPub()
+                    ?: throw RuntimeException("No identity public key")
+                val hash = MessageDigest.getInstance("SHA-256").digest(identityPub)
+                val fingerprint = hash.take(18).joinToString(":") { "%02X".format(it) }
+
+                // Step 2: Signed pre-key (generated as part of init, just verify)
                 updateStep(1, StepStatus.IN_PROGRESS)
-                generateSignedPreKey(identityKeyPair)
+                val spk = NativeCrypto.currentSpk()
+                    ?: throw RuntimeException("No signed pre-key")
                 delay(200)
                 updateStep(1, StepStatus.DONE)
 
-                // Step 3: Generate one-time pre-keys
+                // Step 3: Generate one-time pre-keys via prepareRegistration
                 updateStep(2, StepStatus.IN_PROGRESS)
-                generateOneTimePreKeys(identityKeyPair, 100)
+                val uploadBytes = withContext(Dispatchers.Default) {
+                    NativeCrypto.prepareRegistration(100)
+                } ?: throw RuntimeException("Failed to generate pre-keys")
                 delay(200)
                 updateStep(2, StepStatus.DONE)
-                
-                // Update step label to show completion
+
                 _uiState.update { s ->
                     val updated = s.steps.toMutableList()
                     updated[2] = updated[2].copy(label = "One-time pre-keys (100/100)")
                     s.copy(steps = updated)
                 }
 
-                // Step 4: Save to preferences (server connection would happen here)
+                // Step 4: Save settings
                 updateStep(3, StepStatus.IN_PROGRESS)
-                userPreferences.saveServerSettings(state.serverAddress, state.port.toIntOrNull() ?: 6667)
-                
-                // Serialize the key pair for storage
-                val keyPairBytes = serializeKeyPair(identityKeyPair)
-                userPreferences.saveIdentity(state.nickname, fingerprint, keyPairBytes)
-                delay(300)
+                userPreferences.saveServerSettings(
+                    state.serverAddress,
+                    state.port.toIntOrNull() ?: 6667
+                )
+                userPreferences.saveIdentity(state.nickname, fingerprint, identityPub)
+                delay(200)
                 updateStep(3, StepStatus.DONE)
 
-                // Step 5: Mark as complete
+                // Step 5: Mark registered
                 updateStep(4, StepStatus.IN_PROGRESS)
                 userPreferences.setRegistered(true)
                 delay(200)
@@ -127,7 +138,7 @@ class SetupViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
-                _uiState.update { 
+                _uiState.update {
                     it.copy(
                         isGenerating = false,
                         error = e.message ?: "Unknown error occurred"
@@ -145,72 +156,6 @@ class SetupViewModel @Inject constructor(
                 steps = updated,
                 progress = (index + 1f) / updated.size
             )
-        }
-    }
-
-    /**
-     * Generates an ECDSA P-256 identity key pair and fingerprint.
-     * When native lib is ready, this will call NativeCrypto.generateIdentity()
-     * Using EC/P-256 as interim fallback — works on API 26+.
-     */
-    private fun generateIdentityKeyPair(): Pair<KeyPair, String> {
-        val keyPairGenerator = KeyPairGenerator.getInstance("EC")
-        keyPairGenerator.initialize(java.security.spec.ECGenParameterSpec("secp256r1"), SecureRandom())
-        val keyPair = keyPairGenerator.generateKeyPair()
-
-        val publicKeyBytes = keyPair.public.encoded
-        val hash = MessageDigest.getInstance("SHA-256").digest(publicKeyBytes)
-        val fingerprint = hash.take(18).joinToString(":") { "%02X".format(it) }
-
-        return keyPair to fingerprint
-    }
-
-    private fun generateSignedPreKey(identityKeyPair: KeyPair) {
-        val keyPairGenerator = KeyPairGenerator.getInstance("EC")
-        keyPairGenerator.initialize(java.security.spec.ECGenParameterSpec("secp256r1"), SecureRandom())
-        val signedPreKey = keyPairGenerator.generateKeyPair()
-
-        val signature = Signature.getInstance("SHA256withECDSA")
-        signature.initSign(identityKeyPair.private)
-        signature.update(signedPreKey.public.encoded)
-        val signedData = signature.sign()
-
-        // TODO: Store signed pre-key in database when KeyRepository supports it
-    }
-
-    private fun generateOneTimePreKeys(identityKeyPair: KeyPair, count: Int) {
-        val keyPairGenerator = KeyPairGenerator.getInstance("EC")
-        keyPairGenerator.initialize(java.security.spec.ECGenParameterSpec("secp256r1"), SecureRandom())
-        val secureRandom = SecureRandom()
-        
-        // Generate batch of one-time pre-keys
-        val preKeys = List(count) {
-            keyPairGenerator.generateKeyPair()
-        }
-        
-        // TODO: Store pre-keys in database when KeyRepository supports it
-        // For now, we just simulate the generation time
-    }
-    
-    /**
-     * Serializes a KeyPair to bytes for storage.
-     * Format: [public key length (2 bytes)][public key][private key length (2 bytes)][private key]
-     */
-    private fun serializeKeyPair(keyPair: KeyPair): ByteArray {
-        val pubKey = keyPair.public.encoded
-        val privKey = keyPair.private.encoded
-        
-        return ByteArray(2 + pubKey.size + 2 + privKey.size).apply {
-            // Public key length (big endian)
-            this[0] = (pubKey.size shr 8).toByte()
-            this[1] = pubKey.size.toByte()
-            // Public key
-            System.arraycopy(pubKey, 0, this, 2, pubKey.size)
-            // Private key length
-            this[2 + pubKey.size] = (privKey.size shr 8).toByte()
-            this[2 + pubKey.size + 1] = privKey.size.toByte()
-            // Private key
-            System.arraycopy(privKey, 0, this, 2 + pubKey.size + 2, privKey.size)
         }
     }
 }

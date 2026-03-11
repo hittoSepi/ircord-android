@@ -7,6 +7,11 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import fi.ircord.android.data.local.preferences.UserPreferences
+import fi.ircord.android.data.remote.IrcordConnectionManager
+import fi.ircord.android.data.remote.IrcordSocket
+import fi.ircord.android.data.repository.MessageRepository
+import fi.ircord.android.native.NativeStore
 import javax.inject.Singleton
 
 @Module
@@ -16,9 +21,24 @@ object AppModule {
     @Provides
     @Singleton
     fun provideApplicationContext(@ApplicationContext context: Context): Context = context
-    
+
     @Provides
     @Singleton
-    fun provideContentResolver(@ApplicationContext context: Context): ContentResolver = 
+    fun provideContentResolver(@ApplicationContext context: Context): ContentResolver =
         context.contentResolver
+
+    @Provides
+    @Singleton
+    fun provideNativeStore(@ApplicationContext context: Context): NativeStore =
+        NativeStore(context)
+
+    @Provides
+    @Singleton
+    fun provideIrcordConnectionManager(
+        socket: IrcordSocket,
+        userPreferences: UserPreferences,
+        messageRepository: MessageRepository,
+        nativeStore: NativeStore,
+    ): IrcordConnectionManager =
+        IrcordConnectionManager(socket, userPreferences, messageRepository, nativeStore)
 }
