@@ -22,12 +22,16 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
 
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
+
         // NDK configuration for Signal Protocol crypto
         externalNativeBuild {
             cmake {
                 cppFlags += "-std=c++20"
                 arguments += "-DANDROID_STL=c++_shared"
-                abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+                abiFilters += listOf("arm64-v8a")
             }
         }
     }

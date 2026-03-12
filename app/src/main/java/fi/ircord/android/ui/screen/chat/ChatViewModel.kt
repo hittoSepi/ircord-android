@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import timber.log.Timber
 import javax.inject.Inject
 
 data class ChatUiState(
@@ -43,6 +44,8 @@ data class ChatUiState(
     val voiceParticipantCount: Int = 0,
     val screenCaptureEnabled: Boolean = false,
     val activeFileTransfers: List<FileTransfer> = emptyList(),
+    val connectionError: String? = null,
+    val isConnecting: Boolean = false,
 )
 
 @HiltViewModel
@@ -66,12 +69,18 @@ class ChatViewModel @Inject constructor(
     )
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
 
+    private var hasJoinedChannel = false
+
     init {
         // Load current user and start connection + auth
         viewModelScope.launch {
             val nickname = userPreferences.nickname.first() ?: ""
             _uiState.update { it.copy(currentUserId = nickname) }
             connectionManager.start()
+            
+            // Auto-join the channel when connected
+            kotlinx.coroutines.delay(1000) // Wait for connection
+            joinChannel("#$channelId")
         }
 
         // Observe screen capture setting
@@ -92,11 +101,17 @@ class ChatViewModel @Inject constructor(
                 state.copy(
                     messages = messages,
                     isConnected = connectionState == ConnectionState.CONNECTED,
+                    isConnecting = connectionState == ConnectionState.CONNECTING,
                     voiceActive = voiceState.isInVoice && voiceState.channelId == channelId,
                     voiceChannelName = if (voiceState.isInVoice) "#$channelId" else null,
                     voiceParticipantCount = voiceState.participants.size,
                 )
             }
+        }.launchIn(viewModelScope)
+        
+        // Observe auth state for errors
+        connectionManager.authState.onEach { authState ->
+            Timber.d("Auth state changed: $authState")
         }.launchIn(viewModelScope)
         
         // Observe file transfer updates
@@ -114,10 +129,40 @@ class ChatViewModel @Inject constructor(
 
     fun onInputChanged(text: String) = _uiState.update { it.copy(inputText = text) }
 
+    /**
+     * Manually trigger reconnection to the server.
+     */
+    fun reconnect() {
+        viewModelScope.launch {
+            Timber.i("Manual reconnect requested")
+            _uiState.update { it.copy(connectionError = null) }
+            connectionManager.start()
+        }
+    }
+    
+    /**
+     * Dismiss connection error message.
+     */
+    fun dismissError() {
+        _uiState.update { it.copy(connectionError = null) }
+    }
+
     fun sendMessage() {
         val state = _uiState.value
         val text = state.inputText.trim()
         if (text.isEmpty()) return
+
+        // Check if this is a command (starts with /)
+        if (text.startsWith("/")) {
+            handleCommand(text)
+            return
+        }
+
+        // Check if we've joined the channel
+        if (!hasJoinedChannel) {
+            _uiState.update { it.copy(connectionError = "Not joined to channel. Use /join #${channelId} first") }
+            return
+        }
 
         val recipientId = "#$channelId" // channels prefixed with #
 
@@ -138,6 +183,45 @@ class ChatViewModel @Inject constructor(
                 messageRepository.updateSendStatus(id, SendStatus.SENT.name.lowercase())
             } catch (e: Exception) {
                 messageRepository.updateSendStatus(id, SendStatus.FAILED.name.lowercase())
+            }
+        }
+    }
+    
+    fun joinChannel(channelName: String) {
+        val name = if (channelName.startsWith("#")) channelName else "#$channelName"
+        connectionManager.sendCommand("join", name)
+        hasJoinedChannel = true
+    }
+    
+    private fun handleCommand(input: String) {
+        val parts = input.substring(1).split(" ")
+        if (parts.isEmpty()) return
+        
+        val command = parts[0].lowercase()
+        val args = parts.drop(1)
+        
+        when (command) {
+            "join" -> {
+                if (args.isNotEmpty()) {
+                    val channelName = args[0]
+                    connectionManager.sendCommand("join", channelName)
+                    _uiState.update { it.copy(inputText = "") }
+                }
+            }
+            "part", "leave" -> {
+                val channelName = args.firstOrNull() ?: "#$channelId"
+                connectionManager.sendCommand("part", channelName)
+                _uiState.update { it.copy(inputText = "") }
+            }
+            "nick" -> {
+                if (args.isNotEmpty()) {
+                    connectionManager.sendCommand("nick", args[0])
+                    _uiState.update { it.copy(inputText = "") }
+                }
+            }
+            else -> {
+                // Unknown command, send as chat for now
+                connectionManager.sendChat("#$channelId", input)
             }
         }
     }

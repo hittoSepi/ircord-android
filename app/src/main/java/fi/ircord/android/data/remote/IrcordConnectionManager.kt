@@ -3,6 +3,7 @@ package fi.ircord.android.data.remote
 import com.google.protobuf.ByteString
 import fi.ircord.android.data.local.entity.MessageEntity
 import fi.ircord.android.data.local.preferences.UserPreferences
+import fi.ircord.android.data.remote.ConnectionState
 import fi.ircord.android.data.repository.MessageRepository
 import fi.ircord.android.crypto.NativeCrypto
 import fi.ircord.android.crypto.NativeStore
@@ -47,6 +48,9 @@ class IrcordConnectionManager @Inject constructor(
 
     // Pending DMs waiting for key bundles
     private val pendingSends = ConcurrentHashMap<String, String>()
+    
+    // Callback for command responses (e.g., channel join)
+    var onCommandResponse: ((success: Boolean, message: String, command: String) -> Unit)? = null
 
     /**
      * Connect to the server, authenticate, and start the message loop.
@@ -56,6 +60,7 @@ class IrcordConnectionManager @Inject constructor(
         scope.launch {
             val address = userPreferences.serverAddress.first() ?: return@launch
             val port = userPreferences.port.first()
+            val useTls = userPreferences.useTls.first()
             userId = userPreferences.nickname.first() ?: return@launch
 
             // Initialize native crypto engine
@@ -73,8 +78,9 @@ class IrcordConnectionManager @Inject constructor(
             // Start listening for incoming frames
             launch { collectFrames() }
 
-            // Connect socket (triggers TLS handshake)
-            socket.connect(address, port)
+            // Connect socket (TLS or plaintext based on port/settings)
+            Timber.i("Connecting to $address:$port (TLS=$useTls)")
+            socket.connect(address, port, useTls)
 
             // Wait for connection, then send HELLO
             socket.connectionState.collect { state ->
@@ -158,8 +164,12 @@ class IrcordConnectionManager @Inject constructor(
      * Called from ChatViewModel.
      */
     fun sendChat(recipientId: String, plaintext: String) {
+        if (socket.connectionState.value != ConnectionState.CONNECTED) {
+            Timber.w("Cannot send: socket not connected (state=${socket.connectionState.value})")
+            return
+        }
         if (_authState.value != AuthState.AUTHENTICATED) {
-            Timber.w("Cannot send: not authenticated")
+            Timber.w("Cannot send: not authenticated (state=${_authState.value})")
             return
         }
 
@@ -171,6 +181,31 @@ class IrcordConnectionManager @Inject constructor(
             } else {
                 sendDmMessage(recipientId, plaintext)
             }
+        }
+    }
+    
+    /**
+     * Send an IRC-style command to the server.
+     * @param command Command name (e.g., "join", "part")
+     * @param args Command arguments
+     */
+    fun sendCommand(command: String, vararg args: String) {
+        if (socket.connectionState.value != ConnectionState.CONNECTED) {
+            Timber.w("Cannot send command: socket not connected")
+            return
+        }
+        if (_authState.value != AuthState.AUTHENTICATED) {
+            Timber.w("Cannot send command: not authenticated")
+            return
+        }
+        
+        scope.launch(Dispatchers.Default) {
+            val cmd = IrcCommand.newBuilder()
+                .setCommand(command)
+                .addAllArgs(args.toList())
+                .build()
+            sendEnvelope(MessageType.MT_COMMAND, cmd.toByteArray())
+            Timber.d("Sent command: $command ${args.joinToString(" ")}")
         }
     }
 
@@ -186,22 +221,57 @@ class IrcordConnectionManager @Inject constructor(
             return
         }
 
-        // Parse the native ChatEnvelope bytes
-        val chat = ChatEnvelope.parseFrom(ciphertextBytes)
+        // Build ChatEnvelope with sender info
+        // ciphertext_type: 1 = WHISPER_MESSAGE, 3 = PRE_KEY_MESSAGE
+        val chat = createDmEnvelope(
+            senderId = userId,
+            recipientId = recipientId,
+            ciphertext = ciphertextBytes,
+            ciphertextType = 1 // WHISPER_MESSAGE - assumes session exists
+        )
         sendEnvelope(MessageType.MT_CHAT_ENVELOPE, chat.toByteArray())
+        Timber.d("Sent DM to '$recipientId'")
     }
 
     private fun sendChannelMessage(channelId: String, plaintext: String) {
-        val ciphertextBytes = NativeCrypto.encryptGroup(channelId, plaintext.toByteArray(Charsets.UTF_8))
-
+        Timber.d("Sending channel message to '$channelId' as '$userId': $plaintext")
+        
+        // Try to encrypt - if no session exists, init one first
+        var ciphertextBytes = NativeCrypto.encryptGroup(channelId, plaintext.toByteArray(Charsets.UTF_8))
+        
         if (ciphertextBytes == null) {
-            Timber.e("Failed to encrypt group message for $channelId")
-            return
+            // No group session yet - initialize one
+            Timber.i("Initializing group session for $channelId")
+            NativeCrypto.initGroupSession(channelId, emptyArray())
+            
+            // Try encrypting again
+            ciphertextBytes = NativeCrypto.encryptGroup(channelId, plaintext.toByteArray(Charsets.UTF_8))
+            
+            if (ciphertextBytes == null) {
+                Timber.e("Failed to encrypt group message even after init for $channelId")
+                return
+            }
         }
+        
+        Timber.d("Encrypted message: ${ciphertextBytes.size} bytes")
 
-        // Native returns serialized ChatEnvelope
-        val chat = ChatEnvelope.parseFrom(ciphertextBytes)
-        sendEnvelope(MessageType.MT_CHAT_ENVELOPE, chat.toByteArray())
+        // Build ChatEnvelope with sender info
+        val chat = createGroupEnvelope(
+            senderId = userId,
+            channelId = channelId,
+            ciphertext = ciphertextBytes,
+            skdm = null // SKDM is handled separately on first message
+        )
+        
+        val chatBytes = chat.toByteArray()
+        Timber.d("ChatEnvelope: ${chatBytes.size} bytes, sender='${chat.senderId}', recipient='${chat.recipientId}', type=${chat.ciphertextType}")
+        
+        val sent = sendEnvelope(MessageType.MT_CHAT_ENVELOPE, chatBytes)
+        if (sent) {
+            Timber.i("Sent channel message to '$channelId' (${chatBytes.size} bytes)")
+        } else {
+            Timber.e("Failed to send channel message to '$channelId'")
+        }
     }
 
     // ========================================================================
@@ -229,6 +299,7 @@ class IrcordConnectionManager @Inject constructor(
             MessageType.MT_KEY_BUNDLE     -> handleKeyBundle(payload)
             MessageType.MT_PRESENCE       -> handlePresence(payload)
             MessageType.MT_PING           -> handlePing(env)
+            MessageType.MT_COMMAND_RESPONSE -> handleCommandResponse(payload)
             MessageType.MT_ERROR          -> handleError(payload)
             else -> Timber.d("Unhandled message type: ${env.type}")
         }
@@ -246,9 +317,12 @@ class IrcordConnectionManager @Inject constructor(
                 val recipientId = chat.recipientId
                 val ciphertext = chat.ciphertext.toByteArray()
                 val type = chat.ciphertextType
+                
+                Timber.d("Received chat from '$senderId' to '$recipientId', type=$type, ${ciphertext.size} bytes")
 
                 // Process SKDM if present (group first-message)
                 if (chat.skdm.size() > 0 && recipientId.startsWith("#")) {
+                    Timber.d("Processing SKDM from $senderId for $recipientId")
                     NativeCrypto.processSenderKeyDistribution(
                         senderId, recipientId, chat.skdm.toByteArray()
                     )
@@ -265,11 +339,12 @@ class IrcordConnectionManager @Inject constructor(
                 }
 
                 if (plaintext == null) {
-                    Timber.w("Failed to decrypt message from $senderId")
+                    Timber.w("Failed to decrypt message from $senderId to $recipientId (type=$type)")
                     return@launch
                 }
 
                 val text = String(plaintext, Charsets.UTF_8)
+                Timber.i("Received message from '$senderId': $text")
 
                 // Determine channel: for DMs use the sender's ID, for channels use recipient
                 val channelId = if (recipientId.startsWith("#")) {
@@ -346,18 +421,28 @@ class IrcordConnectionManager @Inject constructor(
             Timber.e(e, "Error parsing error message")
         }
     }
+    
+    private fun handleCommandResponse(payload: ByteArray) {
+        try {
+            val response = CommandResponse.parseFrom(payload)
+            Timber.d("Command response: ${response.command} - success=${response.success}, message=${response.message}")
+            onCommandResponse?.invoke(response.success, response.message, response.command)
+        } catch (e: Exception) {
+            Timber.e(e, "Error parsing command response")
+        }
+    }
 
     // ========================================================================
     // Helpers
-    // ========================================================================
+    // =======================================================================
 
-    private fun sendEnvelope(type: MessageType, payload: ByteArray) {
+    private fun sendEnvelope(type: MessageType, payload: ByteArray): Boolean {
         val env = Envelope.newBuilder()
             .setSeq(seq.getAndIncrement())
             .setTimestampMs(System.currentTimeMillis())
             .setType(type)
             .setPayload(ByteString.copyFrom(payload))
             .build()
-        socket.send(env.toByteArray())
+        return socket.send(env.toByteArray())
     }
 }

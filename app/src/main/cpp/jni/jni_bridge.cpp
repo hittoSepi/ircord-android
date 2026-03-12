@@ -14,6 +14,13 @@ using namespace ircord::crypto;
 
 // Global engine instance (singleton for now)
 static std::unique_ptr<CryptoEngine> g_engine;
+static JavaVM* g_jvm = nullptr;
+
+// Cache JavaVM on library load
+JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* /*reserved*/) {
+    g_jvm = vm;
+    return JNI_VERSION_1_6;
+}
 
 // ============================================================================
 // JNI Store Implementation
@@ -21,13 +28,13 @@ static std::unique_ptr<CryptoEngine> g_engine;
 
 class JNIStore : public IStore {
 public:
-    JNIStore(JNIEnv* env, jobject store_obj) : env_(env) {
+    JNIStore(JNIEnv* env, jobject store_obj) {
         store_obj_ = env->NewGlobalRef(store_obj);
-        
+
         jclass cls = env->GetObjectClass(store_obj);
-        
+
         // Cache method IDs
-        saveIdentity_mid = env->GetMethodID(cls, "saveIdentity", 
+        saveIdentity_mid = env->GetMethodID(cls, "saveIdentity",
             "(Ljava/lang/String;[B[B[B)V");
         loadIdentity_mid = env->GetMethodID(cls, "loadIdentity",
             "(Ljava/lang/String;)[B");
@@ -53,170 +60,208 @@ public:
             "(Ljava/lang/String;[B)V");
         loadSenderKey_mid = env->GetMethodID(cls, "loadSenderKey",
             "(Ljava/lang/String;)[B");
+
+        env->DeleteLocalRef(cls);
     }
-    
+
     ~JNIStore() {
-        if (env_ && store_obj_) {
-            env_->DeleteGlobalRef(store_obj_);
+        if (g_jvm && store_obj_) {
+            JNIEnv* env = getEnv();
+            if (env) env->DeleteGlobalRef(store_obj_);
         }
     }
 
-    void saveIdentity(const std::string& user_id, 
+    void saveIdentity(const std::string& user_id,
                       const std::vector<uint8_t>& pub_key,
                       const std::vector<uint8_t>& priv_key_encrypted,
                       const std::vector<uint8_t>& salt) override {
-        jstring juser = env_->NewStringUTF(user_id.c_str());
-        jbyteArray jpub = toByteArray(pub_key);
-        jbyteArray jpriv = toByteArray(priv_key_encrypted);
-        jbyteArray jsalt = toByteArray(salt);
-        env_->CallVoidMethod(store_obj_, saveIdentity_mid, juser, jpub, jpriv, jsalt);
-        env_->DeleteLocalRef(juser);
-        env_->DeleteLocalRef(jpub);
-        env_->DeleteLocalRef(jpriv);
-        env_->DeleteLocalRef(jsalt);
+        JNIEnv* env = getEnv();
+        if (!env) return;
+        jstring juser = env->NewStringUTF(user_id.c_str());
+        jbyteArray jpub = toByteArray(env, pub_key);
+        jbyteArray jpriv = toByteArray(env, priv_key_encrypted);
+        jbyteArray jsalt = toByteArray(env, salt);
+        env->CallVoidMethod(store_obj_, saveIdentity_mid, juser, jpub, jpriv, jsalt);
+        env->DeleteLocalRef(juser);
+        env->DeleteLocalRef(jpub);
+        env->DeleteLocalRef(jpriv);
+        env->DeleteLocalRef(jsalt);
     }
-    
+
     bool loadIdentity(const std::string& user_id,
                       std::vector<uint8_t>& pub_key_out,
                       std::vector<uint8_t>& priv_key_encrypted_out,
                       std::vector<uint8_t>& salt_out) override {
-        jstring juser = env_->NewStringUTF(user_id.c_str());
-        jbyteArray result = (jbyteArray)env_->CallObjectMethod(store_obj_, 
+        JNIEnv* env = getEnv();
+        if (!env) return false;
+        jstring juser = env->NewStringUTF(user_id.c_str());
+        jbyteArray result = (jbyteArray)env->CallObjectMethod(store_obj_,
                                                                loadIdentity_mid, juser);
-        env_->DeleteLocalRef(juser);
-        
+        env->DeleteLocalRef(juser);
+
         if (!result) return false;
-        
+
         // Format: [4 bytes pub_len LE] [4 bytes salt_len LE] [salt] [pub_key] [priv_encrypted]
-        jsize len = env_->GetArrayLength(result);
+        jsize len = env->GetArrayLength(result);
         if (len < 8) {
-            env_->DeleteLocalRef(result);
+            env->DeleteLocalRef(result);
             return false;
         }
-        
-        jbyte* data = env_->GetByteArrayElements(result, nullptr);
-        
+
+        jbyte* data = env->GetByteArrayElements(result, nullptr);
+
         uint32_t pub_len = *reinterpret_cast<const uint32_t*>(data);
         uint32_t salt_len = *reinterpret_cast<const uint32_t*>(data + 4);
-        
-        if (len < 8 + salt_len + pub_len) {
-            env_->ReleaseByteArrayElements(result, data, JNI_ABORT);
-            env_->DeleteLocalRef(result);
+
+        if (len < (jsize)(8 + salt_len + pub_len)) {
+            env->ReleaseByteArrayElements(result, data, JNI_ABORT);
+            env->DeleteLocalRef(result);
             return false;
         }
-        
+
         salt_out.assign(reinterpret_cast<const uint8_t*>(data) + 8,
                         reinterpret_cast<const uint8_t*>(data) + 8 + salt_len);
         pub_key_out.assign(reinterpret_cast<const uint8_t*>(data) + 8 + salt_len,
                            reinterpret_cast<const uint8_t*>(data) + 8 + salt_len + pub_len);
         priv_key_encrypted_out.assign(reinterpret_cast<const uint8_t*>(data) + 8 + salt_len + pub_len,
                                       reinterpret_cast<const uint8_t*>(data) + len);
-        
-        env_->ReleaseByteArrayElements(result, data, JNI_ABORT);
-        env_->DeleteLocalRef(result);
+
+        env->ReleaseByteArrayElements(result, data, JNI_ABORT);
+        env->DeleteLocalRef(result);
         return true;
     }
 
     void saveSession(const std::string& address, const std::vector<uint8_t>& record) override {
-        jstring jaddr = env_->NewStringUTF(address.c_str());
-        jbyteArray jrecord = toByteArray(record);
-        env_->CallVoidMethod(store_obj_, saveSession_mid, jaddr, jrecord);
-        env_->DeleteLocalRef(jaddr);
-        env_->DeleteLocalRef(jrecord);
+        JNIEnv* env = getEnv();
+        if (!env) return;
+        jstring jaddr = env->NewStringUTF(address.c_str());
+        jbyteArray jrecord = toByteArray(env, record);
+        env->CallVoidMethod(store_obj_, saveSession_mid, jaddr, jrecord);
+        env->DeleteLocalRef(jaddr);
+        env->DeleteLocalRef(jrecord);
     }
-    
+
     std::vector<uint8_t> loadSession(const std::string& address) override {
-        jstring jaddr = env_->NewStringUTF(address.c_str());
-        jbyteArray result = (jbyteArray)env_->CallObjectMethod(store_obj_, 
+        JNIEnv* env = getEnv();
+        if (!env) return {};
+        jstring jaddr = env->NewStringUTF(address.c_str());
+        jbyteArray result = (jbyteArray)env->CallObjectMethod(store_obj_,
                                                                loadSession_mid, jaddr);
-        env_->DeleteLocalRef(jaddr);
-        return fromByteArray(result);
+        env->DeleteLocalRef(jaddr);
+        return fromByteArray(env, result);
     }
 
     void savePreKey(uint32_t id, const std::vector<uint8_t>& record) override {
-        jbyteArray jrecord = toByteArray(record);
-        env_->CallVoidMethod(store_obj_, savePreKey_mid, (jint)id, jrecord);
-        env_->DeleteLocalRef(jrecord);
+        JNIEnv* env = getEnv();
+        if (!env) return;
+        jbyteArray jrecord = toByteArray(env, record);
+        env->CallVoidMethod(store_obj_, savePreKey_mid, (jint)id, jrecord);
+        env->DeleteLocalRef(jrecord);
     }
-    
+
     std::vector<uint8_t> loadPreKey(uint32_t id) override {
-        jbyteArray result = (jbyteArray)env_->CallObjectMethod(store_obj_, 
+        JNIEnv* env = getEnv();
+        if (!env) return {};
+        jbyteArray result = (jbyteArray)env->CallObjectMethod(store_obj_,
                                                                loadPreKey_mid, (jint)id);
-        return fromByteArray(result);
+        return fromByteArray(env, result);
     }
-    
+
     void removePreKey(uint32_t id) override {
-        env_->CallVoidMethod(store_obj_, removePreKey_mid, (jint)id);
+        JNIEnv* env = getEnv();
+        if (!env) return;
+        env->CallVoidMethod(store_obj_, removePreKey_mid, (jint)id);
     }
 
     void saveSignedPreKey(uint32_t id, const std::vector<uint8_t>& record) override {
-        jbyteArray jrecord = toByteArray(record);
-        env_->CallVoidMethod(store_obj_, saveSignedPreKey_mid, (jint)id, jrecord);
-        env_->DeleteLocalRef(jrecord);
+        JNIEnv* env = getEnv();
+        if (!env) return;
+        jbyteArray jrecord = toByteArray(env, record);
+        env->CallVoidMethod(store_obj_, saveSignedPreKey_mid, (jint)id, jrecord);
+        env->DeleteLocalRef(jrecord);
     }
-    
+
     std::vector<uint8_t> loadSignedPreKey(uint32_t id) override {
-        jbyteArray result = (jbyteArray)env_->CallObjectMethod(store_obj_,
+        JNIEnv* env = getEnv();
+        if (!env) return {};
+        jbyteArray result = (jbyteArray)env->CallObjectMethod(store_obj_,
                                                                loadSignedPreKey_mid, (jint)id);
-        return fromByteArray(result);
+        return fromByteArray(env, result);
     }
 
     void savePeerIdentity(const std::string& user_id, const std::vector<uint8_t>& pub_key) override {
-        jstring juser = env_->NewStringUTF(user_id.c_str());
-        jbyteArray jpub = toByteArray(pub_key);
-        env_->CallVoidMethod(store_obj_, savePeerIdentity_mid, juser, jpub);
-        env_->DeleteLocalRef(juser);
-        env_->DeleteLocalRef(jpub);
+        JNIEnv* env = getEnv();
+        if (!env) return;
+        jstring juser = env->NewStringUTF(user_id.c_str());
+        jbyteArray jpub = toByteArray(env, pub_key);
+        env->CallVoidMethod(store_obj_, savePeerIdentity_mid, juser, jpub);
+        env->DeleteLocalRef(juser);
+        env->DeleteLocalRef(jpub);
     }
-    
+
     std::vector<uint8_t> loadPeerIdentity(const std::string& user_id) override {
-        jstring juser = env_->NewStringUTF(user_id.c_str());
-        jbyteArray result = (jbyteArray)env_->CallObjectMethod(store_obj_,
+        JNIEnv* env = getEnv();
+        if (!env) return {};
+        jstring juser = env->NewStringUTF(user_id.c_str());
+        jbyteArray result = (jbyteArray)env->CallObjectMethod(store_obj_,
                                                                loadPeerIdentity_mid, juser);
-        env_->DeleteLocalRef(juser);
-        return fromByteArray(result);
+        env->DeleteLocalRef(juser);
+        return fromByteArray(env, result);
     }
 
     void saveSenderKey(const std::string& sender_key_id, const std::vector<uint8_t>& record) override {
-        jstring jid = env_->NewStringUTF(sender_key_id.c_str());
-        jbyteArray jrecord = toByteArray(record);
-        env_->CallVoidMethod(store_obj_, saveSenderKey_mid, jid, jrecord);
-        env_->DeleteLocalRef(jid);
-        env_->DeleteLocalRef(jrecord);
+        JNIEnv* env = getEnv();
+        if (!env) return;
+        jstring jid = env->NewStringUTF(sender_key_id.c_str());
+        jbyteArray jrecord = toByteArray(env, record);
+        env->CallVoidMethod(store_obj_, saveSenderKey_mid, jid, jrecord);
+        env->DeleteLocalRef(jid);
+        env->DeleteLocalRef(jrecord);
     }
-    
+
     std::vector<uint8_t> loadSenderKey(const std::string& sender_key_id) override {
-        jstring jid = env_->NewStringUTF(sender_key_id.c_str());
-        jbyteArray result = (jbyteArray)env_->CallObjectMethod(store_obj_,
+        JNIEnv* env = getEnv();
+        if (!env) return {};
+        jstring jid = env->NewStringUTF(sender_key_id.c_str());
+        jbyteArray result = (jbyteArray)env->CallObjectMethod(store_obj_,
                                                                loadSenderKey_mid, jid);
-        env_->DeleteLocalRef(jid);
-        return fromByteArray(result);
+        env->DeleteLocalRef(jid);
+        return fromByteArray(env, result);
     }
 
 private:
-    JNIEnv* env_ = nullptr;
     jobject store_obj_ = nullptr;
-    
+
     jmethodID saveIdentity_mid, loadIdentity_mid;
     jmethodID saveSession_mid, loadSession_mid;
     jmethodID savePreKey_mid, loadPreKey_mid, removePreKey_mid;
     jmethodID saveSignedPreKey_mid, loadSignedPreKey_mid;
     jmethodID savePeerIdentity_mid, loadPeerIdentity_mid;
     jmethodID saveSenderKey_mid, loadSenderKey_mid;
-    
-    jbyteArray toByteArray(const std::vector<uint8_t>& data) {
-        jbyteArray arr = env_->NewByteArray(data.size());
-        env_->SetByteArrayRegion(arr, 0, data.size(), 
+
+    static JNIEnv* getEnv() {
+        JNIEnv* env = nullptr;
+        if (!g_jvm) return nullptr;
+        int status = g_jvm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6);
+        if (status == JNI_EDETACHED) {
+            g_jvm->AttachCurrentThread(&env, nullptr);
+        }
+        return env;
+    }
+
+    static jbyteArray toByteArray(JNIEnv* env, const std::vector<uint8_t>& data) {
+        jbyteArray arr = env->NewByteArray(data.size());
+        env->SetByteArrayRegion(arr, 0, data.size(),
                                  reinterpret_cast<const jbyte*>(data.data()));
         return arr;
     }
-    
-    std::vector<uint8_t> fromByteArray(jbyteArray arr) {
+
+    static std::vector<uint8_t> fromByteArray(JNIEnv* env, jbyteArray arr) {
         if (!arr) return {};
-        jsize len = env_->GetArrayLength(arr);
+        jsize len = env->GetArrayLength(arr);
         std::vector<uint8_t> result(len);
-        env_->GetByteArrayRegion(arr, 0, len, reinterpret_cast<jbyte*>(result.data()));
-        env_->DeleteLocalRef(arr);
+        env->GetByteArrayRegion(arr, 0, len, reinterpret_cast<jbyte*>(result.data()));
+        env->DeleteLocalRef(arr);
         return result;
     }
 };

@@ -5,7 +5,9 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import fi.ircord.android.data.local.entity.ChannelEntity
 import fi.ircord.android.data.local.preferences.UserPreferences
+import fi.ircord.android.data.remote.AuthState
 import fi.ircord.android.data.remote.ConnectionState
+import fi.ircord.android.data.remote.IrcordConnectionManager
 import fi.ircord.android.data.remote.IrcordSocket
 import fi.ircord.android.data.repository.ChannelRepository
 import fi.ircord.android.data.repository.VoiceRepository
@@ -22,6 +24,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import timber.log.Timber
 import javax.inject.Inject
 
 data class ChannelListUiState(
@@ -44,12 +47,26 @@ class ChannelListViewModel @Inject constructor(
     private val voiceRepository: VoiceRepository,
     private val userPreferences: UserPreferences,
     private val ircordSocket: IrcordSocket,
+    private val connectionManager: IrcordConnectionManager,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChannelListUiState())
     val uiState: StateFlow<ChannelListUiState> = _uiState.asStateFlow()
+    
+    // Track pending channel joins to add them on success
+    private val pendingJoins = mutableSetOf<String>()
 
     init {
+        // Set up command response callback
+        connectionManager.onCommandResponse = { success, message, command ->
+            if (command == "join" && success) {
+                // Extract channel name from message: "Joined #channel"
+                val channelMatch = Regex("Joined (#\\w+)").find(message)
+                channelMatch?.groupValues?.get(1)?.let { channelName ->
+                    addJoinedChannel(channelName)
+                }
+            }
+        }
         // Combine all relevant flows
         combine(
             channelRepository.getAllChannels(),
@@ -103,21 +120,51 @@ class ChannelListViewModel @Inject constructor(
             }
         }.launchIn(viewModelScope)
         
-        // Load initial channels if empty
+        // Auto-join default channel when authenticated
         viewModelScope.launch {
-            ensureDefaultChannels()
+            connectionManager.authState.collect { authState ->
+                if (authState == AuthState.AUTHENTICATED) {
+                    // Check if we have any channels, if not auto-join #general
+                    val channels = channelRepository.getAllChannels().first()
+                    if (channels.isEmpty()) {
+                        Timber.d("Auto-joining #general")
+                        joinChannel("#general")
+                    }
+                }
+            }
         }
     }
     
-    private suspend fun ensureDefaultChannels() {
-        val existing = channelRepository.getAllChannels().first()
-        if (existing.isEmpty()) {
-            // Create default channels
-            val defaultChannels = listOf(
-                ChannelEntity("general", "#general", System.currentTimeMillis()),
-                ChannelEntity("random", "#random", System.currentTimeMillis()),
-            )
-            defaultChannels.forEach { channelRepository.insert(it) }
+    /**
+     * Join a channel by sending /join command to server.
+     */
+    fun joinChannel(channelName: String) {
+        viewModelScope.launch {
+            pendingJoins.add(channelName)
+            connectionManager.sendCommand("join", channelName)
+            Timber.d("Sent join command for $channelName")
+        }
+    }
+    
+    /**
+     * Add a channel to the local database when successfully joined.
+     * Called when server confirms channel join via command response.
+     */
+    fun addJoinedChannel(channelId: String, displayName: String? = null) {
+        viewModelScope.launch {
+            // Remove # prefix if present for storage
+            val cleanChannelId = channelId.removePrefix("#")
+            val existing = channelRepository.getAllChannels().first()
+                .any { it.channelId == cleanChannelId }
+            
+            if (!existing) {
+                val entity = ChannelEntity(
+                    channelId = cleanChannelId,
+                    displayName = displayName ?: "#$cleanChannelId",
+                    joinedAt = System.currentTimeMillis(),
+                )
+                channelRepository.insert(entity)
+            }
         }
     }
     

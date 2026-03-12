@@ -1,8 +1,8 @@
 package fi.ircord.android.data.repository
 
 import android.util.Log
-import fi.ircord.android.ndk.NativeCrypto
-import fi.ircord.android.ndk.NativeStore
+import fi.ircord.android.crypto.NativeCrypto
+import fi.ircord.android.crypto.NativeStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -40,7 +40,7 @@ class CryptoRepository @Inject constructor(
     suspend fun initialize(userId: String, passphrase: String): Boolean = 
         withContext(Dispatchers.IO) {
             try {
-                val result = NativeCrypto.init(nativeStore, userId, passphrase)
+                val result = NativeCrypto.nativeInit(nativeStore, userId, passphrase)
                 if (result) {
                     isInitialized = true
                     currentUserId = userId

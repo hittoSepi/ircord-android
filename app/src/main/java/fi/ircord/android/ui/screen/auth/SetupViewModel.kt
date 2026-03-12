@@ -20,7 +20,7 @@ import javax.inject.Inject
 
 data class SetupUiState(
     val serverAddress: String = "",
-    val port: String = "6667",
+    val port: String = "6697",
     val nickname: String = "",
     val inviteCode: String = "",
     val isGenerating: Boolean = false,
@@ -115,9 +115,13 @@ class SetupViewModel @Inject constructor(
 
                 // Step 4: Save settings
                 updateStep(3, StepStatus.IN_PROGRESS)
+                val port = state.port.toIntOrNull() ?: 6667
+                // Auto-detect TLS: 6667 = plaintext, others = TLS
+                val useTls = port != 6667
                 userPreferences.saveServerSettings(
                     state.serverAddress,
-                    state.port.toIntOrNull() ?: 6667
+                    port,
+                    useTls
                 )
                 userPreferences.saveIdentity(state.nickname, fingerprint, identityPub)
                 delay(200)

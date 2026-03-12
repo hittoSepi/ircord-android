@@ -43,11 +43,13 @@ class UserPreferences @Inject constructor(
     val noiseSuppression: Flow<Boolean> = dataStore.data.map { it[KEY_NOISE_SUPPRESSION] ?: true }
     val voiceBitrate: Flow<String> = dataStore.data.map { it[KEY_VOICE_BITRATE] ?: BITRATE_64K }
     val screenCapture: Flow<Boolean> = dataStore.data.map { it[KEY_SCREEN_CAPTURE] ?: false }
+    val useTls: Flow<Boolean> = dataStore.data.map { it[KEY_USE_TLS] ?: (it[KEY_PORT] != 6667) }
 
-    suspend fun saveServerSettings(address: String, port: Int = DEFAULT_PORT) {
+    suspend fun saveServerSettings(address: String, port: Int = DEFAULT_PORT, tls: Boolean? = null) {
         dataStore.edit { prefs ->
             prefs[KEY_SERVER_ADDRESS] = address
             prefs[KEY_PORT] = port
+            tls?.let { prefs[KEY_USE_TLS] = it }
         }
     }
 
@@ -123,5 +125,6 @@ class UserPreferences @Inject constructor(
         private val KEY_NOISE_SUPPRESSION = booleanPreferencesKey("noise_suppression")
         private val KEY_VOICE_BITRATE = stringPreferencesKey("voice_bitrate")
         private val KEY_SCREEN_CAPTURE = booleanPreferencesKey("screen_capture")
+        private val KEY_USE_TLS = booleanPreferencesKey("use_tls")
     }
 }

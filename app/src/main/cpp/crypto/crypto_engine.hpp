@@ -8,6 +8,11 @@
 #include <unordered_map>
 #include <array>
 
+// Forward declaration for group session
+namespace ircord::crypto {
+    class GroupSession;
+}
+
 namespace ircord::crypto {
 
 // Result structure for decryption
@@ -89,6 +94,8 @@ public:
     bool init(IStore* store, const std::string& user_id, const std::string& passphrase);
     
     bool ready() const { return loaded_; }
+    IStore* getStore() const { return store_; }
+    const std::string& getUserId() const { return user_id_; }
 
     // ── Registration ─────────────────────────────────────────────────────
     // Build KeyUpload protobuf bytes: SPK + OPKs
@@ -150,6 +157,10 @@ public:
     // Get pending message for recipient (if waiting for key bundle)
     std::string getPendingPlaintext(const std::string& recipient_id);
     void clearPendingPlaintext(const std::string& recipient_id);
+    
+    // Get Signal Protocol identity keys (X25519 format) - public for store callbacks
+    const std::array<uint8_t, 32>& getSignalIdentityPub() const { return signal_identity_pub_; }
+    const std::array<uint8_t, 32>& getSignalIdentityPriv() const { return signal_identity_priv_; }
 
 private:
     signal_context* signal_ctx_ = nullptr;
@@ -167,11 +178,11 @@ private:
     // Pending messages waiting for key bundles
     std::unordered_map<std::string, std::string> pending_plaintexts_;
     
-    // Group sessions (channel_id -> session state)
-    std::unordered_map<std::string, GroupSessionState> group_sessions_;
+    // Signal Protocol group session for sending messages
+    std::unique_ptr<GroupSession> group_session_;
     
-    // Received sender keys from other users (sender_id:channel_id -> state)
-    std::unordered_map<std::string, GroupSessionState> sender_key_states_;
+    // Track which channels we've initialized sessions for
+    std::unordered_map<std::string, bool> group_sessions_initialized_;
     
     void setupSignalCrypto(signal_context* ctx);
     bool loadOrGenerateIdentity(const std::string& passphrase);
@@ -186,13 +197,27 @@ private:
                              const std::string& passphrase,
                              std::array<uint8_t, 64>& priv_out);
     
-    // Store callbacks
+    // Convert Ed25519 identity keys to X25519 for Signal Protocol
+    bool convertEd25519ToX25519();
+    
+    // Store callbacks - static functions that delegate to instance methods
     static void setupStores(signal_protocol_store_context* store_ctx, CryptoEngine* engine);
     
     // Helper for group session keys
     std::string makeGroupSessionKey(const std::string& sender_id, const std::string& channel_id) {
         return sender_id + ":" + channel_id;
     }
+    
+    // Identity key for Signal Protocol (X25519 format)
+    std::array<uint8_t, 32> signal_identity_pub_{};
+    std::array<uint8_t, 32> signal_identity_priv_{};
+    
+    // Signal Protocol store structures (must persist for callbacks)
+    signal_protocol_session_store session_store_{};
+    signal_protocol_pre_key_store pre_key_store_{};
+    signal_protocol_signed_pre_key_store signed_pre_key_store_{};
+    signal_protocol_identity_key_store identity_key_store_{};
+    signal_protocol_sender_key_store sender_key_store_{};
 };
 
 } // namespace ircord::crypto

@@ -1,7 +1,7 @@
 package fi.ircord.android.security.biometric
 
 import androidx.fragment.app.FragmentActivity
-import fi.ircord.android.ndk.NativeCrypto
+import fi.ircord.android.crypto.NativeCrypto
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import timber.log.Timber
@@ -76,7 +76,7 @@ class BiometricCryptoManager @Inject constructor(
      */
     suspend fun initializeWithBiometric(
         activity: FragmentActivity,
-        store: NativeCrypto.Store,
+        store: fi.ircord.android.crypto.NativeStore,
         userId: String,
         passphrase: String,
     ): Boolean {
@@ -84,7 +84,7 @@ class BiometricCryptoManager @Inject constructor(
             activity = activity,
             operationName = "initialize encryption"
         ) {
-            NativeCrypto.init(store, userId, passphrase)
+            NativeCrypto.nativeInit(store, userId, passphrase)
         } ?: false
     }
     

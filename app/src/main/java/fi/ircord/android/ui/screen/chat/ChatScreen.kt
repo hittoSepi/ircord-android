@@ -4,7 +4,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -13,17 +16,21 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
 import fi.ircord.android.ui.components.VoicePill
@@ -48,6 +55,14 @@ fun ChatScreen(
     // Apply screen security when screen capture is disabled
     SecureScreenEffect(enabled = !state.screenCaptureEnabled)
 
+    // Scroll to bottom when keyboard opens or new messages arrive
+    val currentMessages by rememberUpdatedState(state.messages)
+    LaunchedEffect(currentMessages.size) {
+        if (currentMessages.isNotEmpty()) {
+            listState.animateScrollToItem(currentMessages.size - 1)
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -58,6 +73,17 @@ fun ChatScreen(
                     }
                 },
                 actions = {
+                    // Connection status indicator
+                    val connectionColor = when {
+                        state.isConnected -> IrcordTheme.semanticColors.statusOnline
+                        else -> IrcordTheme.semanticColors.statusOffline
+                    }
+                    Icon(
+                        Icons.Default.Circle,
+                        contentDescription = if (state.isConnected) "Connected" else "Disconnected",
+                        tint = connectionColor,
+                        modifier = Modifier.padding(end = IrcordSpacing.sm)
+                    )
                     if (state.isEncrypted) {
                         Icon(
                             Icons.Default.Lock,
@@ -76,9 +102,68 @@ fun ChatScreen(
                     containerColor = MaterialTheme.colorScheme.surface,
                 ),
             )
-        },
-        bottomBar = {
-            Column {
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .imePadding() // Add padding for keyboard
+                .navigationBarsPadding(), // Handle navigation bar
+        ) {
+            // Connection status banner
+            if (!state.isConnected && !state.isConnecting) {
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { viewModel.reconnect() }
+                ) {
+                    Text(
+                        text = "⚠ Disconnected - Tap to reconnect",
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(IrcordSpacing.md)
+                    )
+                }
+            } else if (state.isConnecting) {
+                Surface(
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        text = "⏳ Connecting...",
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(IrcordSpacing.md)
+                    )
+                }
+            }
+            
+            // Messages list - takes all available space
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f), // Use weight to fill space
+                reverseLayout = false,
+            ) {
+                items(state.messages, key = { it.id }) { message ->
+                    MessageBubble(
+                        message = message,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(
+                                horizontal = IrcordSpacing.messagePaddingHorizontal,
+                                vertical = IrcordSpacing.messagePaddingVertical,
+                            ),
+                    )
+                }
+            }
+            
+            // Input area at bottom (moves with keyboard)
+            Column(
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 if (state.voiceActive && state.voiceChannelName != null) {
                     VoicePill(
                         channelName = state.voiceChannelName!!,
@@ -91,29 +176,9 @@ fun ChatScreen(
                     text = state.inputText,
                     onTextChanged = viewModel::onInputChanged,
                     onSend = viewModel::sendMessage,
-                    onAttachFile = { /* TODO: file attachment */ },
+                    onAttachFile = viewModel::uploadFile,
                     enabled = state.isConnected,
                     modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        }
-    ) { padding ->
-        LazyColumn(
-            state = listState,
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding),
-            reverseLayout = false,
-        ) {
-            items(state.messages, key = { it.id }) { message ->
-                MessageBubble(
-                    message = message,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(
-                            horizontal = IrcordSpacing.messagePaddingHorizontal,
-                            vertical = IrcordSpacing.messagePaddingVertical,
-                        ),
                 )
             }
         }

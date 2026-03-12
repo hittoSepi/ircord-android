@@ -89,16 +89,26 @@ endif()
 target_include_directories(ircord-native PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${libsignal-protocol-c_SOURCE_DIR}/src
+    "C:/Users/hitto/Desktop/IRCord-0.15/ircord-android/app/include"
     ${NDK_OPENSSL_INCLUDE}
 )
 
+# Prebuilt OpenSSL libraries
+set(OPENSSL_LIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../lib")
+get_filename_component(OPENSSL_LIB_DIR "${OPENSSL_LIB_DIR}" ABSOLUTE)
+message(STATUS "OpenSSL lib dir: ${OPENSSL_LIB_DIR}")
+
+add_library(openssl_crypto SHARED IMPORTED)
+set_target_properties(openssl_crypto PROPERTIES IMPORTED_LOCATION "${OPENSSL_LIB_DIR}/libcrypto.so")
+
+add_library(openssl_ssl SHARED IMPORTED)
+set_target_properties(openssl_ssl PROPERTIES IMPORTED_LOCATION "${OPENSSL_LIB_DIR}/libssl.so")
+
 # Link libraries
-# Note: Android NDK provides OpenSSL/BoringSSL through the system
-# We link against libcrypto which is available in the NDK
 target_link_libraries(ircord-native
     signal-protocol-c
-    crypto      # Android NDK crypto library (OpenSSL/BoringSSL)
-    ssl         # Android NDK SSL library
+    openssl_crypto
+    openssl_ssl
     log         # Android log
 )
 
