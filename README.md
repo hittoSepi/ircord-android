@@ -85,6 +85,19 @@ The first build will:
 4. Generate Java/Kotlin classes from protobuf schemas
 5. Build the Android app
 
+## Maestro Docs Screenshots
+
+The repo now includes a Maestro workspace for website/documentation screenshots in [`.maestro/`](./.maestro).
+
+Run from `ircord-android`:
+
+```bash
+./gradlew installDebug
+maestro test .maestro
+```
+
+The flows launch debug-only screenshot scenes through app launch arguments, so setup/chat/settings/voice captures are deterministic and do not need a live server session. Output is written under `.maestro/artifacts/screenshots/android/`.
+
 ## Native Crypto Module
 
 The Signal Protocol implementation is in C++ and shared with the desktop client:

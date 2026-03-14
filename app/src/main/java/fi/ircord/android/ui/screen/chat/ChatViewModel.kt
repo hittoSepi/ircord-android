@@ -189,8 +189,14 @@ class ChatViewModel @Inject constructor(
     
     fun joinChannel(channelName: String) {
         val name = if (channelName.startsWith("#")) channelName else "#$channelName"
-        connectionManager.sendCommand("join", name)
-        hasJoinedChannel = true
+        val accepted = connectionManager.sendCommand("join", name)
+        if (accepted) {
+            hasJoinedChannel = true
+        } else {
+            _uiState.update {
+                it.copy(connectionError = "Cannot join channel before authentication completes")
+            }
+        }
     }
     
     private fun handleCommand(input: String) {
@@ -204,8 +210,14 @@ class ChatViewModel @Inject constructor(
             "join" -> {
                 if (args.isNotEmpty()) {
                     val channelName = args[0]
-                    connectionManager.sendCommand("join", channelName)
-                    _uiState.update { it.copy(inputText = "") }
+                    val accepted = connectionManager.sendCommand("join", channelName)
+                    if (accepted) {
+                        _uiState.update { it.copy(inputText = "") }
+                    } else {
+                        _uiState.update {
+                            it.copy(connectionError = "Cannot join channel before authentication completes")
+                        }
+                    }
                 }
             }
             "part", "leave" -> {

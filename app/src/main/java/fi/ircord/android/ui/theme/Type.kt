@@ -15,6 +15,12 @@ val MonoStyle = TextStyle(
     letterSpacing = 0.sp,
 )
 
+private fun scaledSp(
+    base: Int,
+    scale: Float,
+    minimum: Int,
+) = (base.toFloat() * scale).coerceAtLeast(minimum.toFloat()).sp
+
 /**
  * Creates a scaled Typography based on the given font scale factor.
  * @param scale The font scale factor (0.85f for Small, 1.0f for Normal, 1.15f for Large)
@@ -25,73 +31,73 @@ fun createScaledTypography(scale: Float): Typography {
         headlineLarge = TextStyle(
             fontFamily = FontFamily.Default,
             fontWeight = FontWeight.Bold,
-            fontSize = (24.sp * scale).coerceAtLeast(20.sp),
-            lineHeight = (32.sp * scale).coerceAtLeast(28.sp),
+            fontSize = scaledSp(24, scale, 20),
+            lineHeight = scaledSp(32, scale, 28),
         ),
         headlineMedium = TextStyle(
             fontFamily = FontFamily.Default,
             fontWeight = FontWeight.SemiBold,
-            fontSize = (20.sp * scale).coerceAtLeast(16.sp),
-            lineHeight = (28.sp * scale).coerceAtLeast(24.sp),
+            fontSize = scaledSp(20, scale, 16),
+            lineHeight = scaledSp(28, scale, 24),
         ),
         titleLarge = TextStyle(
             fontFamily = FontFamily.Default,
             fontWeight = FontWeight.SemiBold,
-            fontSize = (18.sp * scale).coerceAtLeast(14.sp),
-            lineHeight = (24.sp * scale).coerceAtLeast(20.sp),
+            fontSize = scaledSp(18, scale, 14),
+            lineHeight = scaledSp(24, scale, 20),
         ),
         titleMedium = TextStyle(
             fontFamily = FontFamily.Default,
             fontWeight = FontWeight.Medium,
-            fontSize = (16.sp * scale).coerceAtLeast(12.sp),
-            lineHeight = (22.sp * scale).coerceAtLeast(18.sp),
+            fontSize = scaledSp(16, scale, 12),
+            lineHeight = scaledSp(22, scale, 18),
         ),
         titleSmall = TextStyle(
             fontFamily = FontFamily.Default,
             fontWeight = FontWeight.Medium,
-            fontSize = (14.sp * scale).coerceAtLeast(12.sp),
-            lineHeight = (20.sp * scale).coerceAtLeast(16.sp),
+            fontSize = scaledSp(14, scale, 12),
+            lineHeight = scaledSp(20, scale, 16),
         ),
         bodyLarge = TextStyle(
             fontFamily = FontFamily.Default,
             fontWeight = FontWeight.Normal,
-            fontSize = (16.sp * scale).coerceAtLeast(14.sp),
-            lineHeight = (24.sp * scale).coerceAtLeast(20.sp),
+            fontSize = scaledSp(16, scale, 14),
+            lineHeight = scaledSp(24, scale, 20),
             letterSpacing = 0.15.sp,
         ),
         bodyMedium = TextStyle(
             fontFamily = FontFamily.Default,
             fontWeight = FontWeight.Normal,
-            fontSize = (14.sp * scale).coerceAtLeast(12.sp),
-            lineHeight = (20.sp * scale).coerceAtLeast(16.sp),
+            fontSize = scaledSp(14, scale, 12),
+            lineHeight = scaledSp(20, scale, 16),
             letterSpacing = 0.25.sp,
         ),
         bodySmall = TextStyle(
             fontFamily = FontFamily.Default,
             fontWeight = FontWeight.Normal,
-            fontSize = (12.sp * scale).coerceAtLeast(10.sp),
-            lineHeight = (16.sp * scale).coerceAtLeast(14.sp),
+            fontSize = scaledSp(12, scale, 10),
+            lineHeight = scaledSp(16, scale, 14),
             letterSpacing = 0.4.sp,
         ),
         labelLarge = TextStyle(
             fontFamily = FontFamily.Default,
             fontWeight = FontWeight.Medium,
-            fontSize = (14.sp * scale).coerceAtLeast(12.sp),
-            lineHeight = (20.sp * scale).coerceAtLeast(16.sp),
+            fontSize = scaledSp(14, scale, 12),
+            lineHeight = scaledSp(20, scale, 16),
             letterSpacing = 0.1.sp,
         ),
         labelMedium = TextStyle(
             fontFamily = FontFamily.Default,
             fontWeight = FontWeight.Medium,
-            fontSize = (12.sp * scale).coerceAtLeast(10.sp),
-            lineHeight = (16.sp * scale).coerceAtLeast(14.sp),
+            fontSize = scaledSp(12, scale, 10),
+            lineHeight = scaledSp(16, scale, 14),
             letterSpacing = 0.5.sp,
         ),
         labelSmall = TextStyle(
             fontFamily = FontFamily.Default,
             fontWeight = FontWeight.Medium,
-            fontSize = (10.sp * scale).coerceAtLeast(8.sp),
-            lineHeight = (14.sp * scale).coerceAtLeast(12.sp),
+            fontSize = scaledSp(10, scale, 8),
+            lineHeight = scaledSp(14, scale, 12),
             letterSpacing = 0.5.sp,
         ),
     )

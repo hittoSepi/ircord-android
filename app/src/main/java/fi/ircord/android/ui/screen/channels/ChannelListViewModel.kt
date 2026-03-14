@@ -215,6 +215,20 @@ class ChannelListViewModel @Inject constructor(
                 return@launch
             }
             
+            val sendBlockedReason = when {
+                ircordSocket.connectionState.value != ConnectionState.CONNECTED ->
+                    "Not connected to server yet"
+                connectionManager.authState.value != AuthState.AUTHENTICATED ->
+                    "Authentication still in progress. Try again in a moment."
+                else -> null
+            }
+            if (sendBlockedReason != null) {
+                _uiState.update { state ->
+                    state.copy(joinDialogState = JoinDialogState.Error(sendBlockedReason))
+                }
+                return@launch
+            }
+
             currentJoinChannel = sanitizedName
             pendingJoins.add(sanitizedName)
             
@@ -222,7 +236,19 @@ class ChannelListViewModel @Inject constructor(
                 state.copy(joinDialogState = JoinDialogState.Joining)
             }
             
-            connectionManager.sendCommand("join", sanitizedName)
+            val accepted = connectionManager.sendCommand("join", sanitizedName)
+            if (!accepted) {
+                pendingJoins.remove(sanitizedName)
+                currentJoinChannel = null
+                _uiState.update { state ->
+                    state.copy(
+                        joinDialogState = JoinDialogState.Error(
+                            "Could not send join command. Authentication may not be finished yet."
+                        )
+                    )
+                }
+                return@launch
+            }
             Timber.d("Sent join command for $sanitizedName")
         }
     }

@@ -189,14 +189,14 @@ class IrcordConnectionManager @Inject constructor(
      * @param command Command name (e.g., "join", "part")
      * @param args Command arguments
      */
-    fun sendCommand(command: String, vararg args: String) {
+    fun sendCommand(command: String, vararg args: String): Boolean {
         if (socket.connectionState.value != ConnectionState.CONNECTED) {
             Timber.w("Cannot send command: socket not connected")
-            return
+            return false
         }
         if (_authState.value != AuthState.AUTHENTICATED) {
             Timber.w("Cannot send command: not authenticated")
-            return
+            return false
         }
         
         scope.launch(Dispatchers.Default) {
@@ -207,6 +207,7 @@ class IrcordConnectionManager @Inject constructor(
             sendEnvelope(MessageType.MT_COMMAND, cmd.toByteArray())
             Timber.d("Sent command: $command ${args.joinToString(" ")}")
         }
+        return true
     }
 
     private fun sendDmMessage(recipientId: String, plaintext: String) {
@@ -311,29 +312,26 @@ class IrcordConnectionManager @Inject constructor(
                 val recipientId = chat.recipientId
                 val ciphertext = chat.ciphertext.toByteArray()
                 val type = chat.ciphertextType
+                val skdm = chat.skdm.takeIf { it.size() > 0 }?.toByteArray()
                 
                 Timber.d("Received chat from '$senderId' to '$recipientId', type=$type, ${ciphertext.size} bytes")
 
-                // Process SKDM if present (group first-message)
-                if (chat.skdm.size() > 0 && recipientId.startsWith("#")) {
-                    Timber.d("Processing SKDM from $senderId for $recipientId")
-                    NativeCrypto.processSenderKeyDistribution(
-                        senderId, recipientId, chat.skdm.toByteArray()
-                    )
-                }
-
-                // Decrypt
                 val plaintext: ByteArray? = if (recipientId.startsWith("#")) {
-                    NativeCrypto.decryptGroup(
-                        senderId, recipientId, ciphertext,
-                        if (chat.skdm.size() > 0) chat.skdm.toByteArray() else null
+                    decryptIncomingGroupMessage(
+                        senderId = senderId,
+                        recipientId = recipientId,
+                        ciphertext = ciphertext,
+                        skdm = skdm,
                     )
                 } else {
                     NativeCrypto.decrypt(senderId, recipientId, ciphertext, type.toInt())
                 }
 
                 if (plaintext == null) {
-                    Timber.w("Failed to decrypt message from $senderId to $recipientId (type=$type)")
+                    Timber.w("Failed to decrypt message from $senderId to $recipientId (type=$type, skdm=${skdm?.size ?: 0})")
+                    if (recipientId.startsWith("#")) {
+                        persistGroupDecryptFailure(senderId, recipientId, env.timestampMs)
+                    }
                     return@launch
                 }
 
@@ -360,6 +358,50 @@ class IrcordConnectionManager @Inject constructor(
                 Timber.e(e, "Error handling incoming chat")
             }
         }
+    }
+
+    private suspend fun decryptIncomingGroupMessage(
+        senderId: String,
+        recipientId: String,
+        ciphertext: ByteArray,
+        skdm: ByteArray?,
+    ): ByteArray? {
+        val candidateChannelIds = buildList {
+            add(recipientId)
+            if (recipientId.startsWith("#")) {
+                add(recipientId.removePrefix("#"))
+            } else {
+                add("#$recipientId")
+            }
+        }.distinct()
+
+        for (channelId in candidateChannelIds) {
+            val plaintext = NativeCrypto.decryptGroup(senderId, channelId, ciphertext, skdm)
+            if (plaintext != null) {
+                if (channelId != recipientId) {
+                    Timber.i("Recovered group decrypt for $senderId using fallback channel id '$channelId' (original '$recipientId')")
+                }
+                return plaintext
+            }
+        }
+
+        return null
+    }
+
+    private suspend fun persistGroupDecryptFailure(
+        senderId: String,
+        recipientId: String,
+        timestampMs: Long,
+    ) {
+        val channelId = recipientId.removePrefix("#")
+        val entity = MessageEntity(
+            channelId = channelId,
+            senderId = "system",
+            content = "Could not decrypt a message from $senderId in $recipientId. Sender key may be missing or stale.",
+            timestamp = if (timestampMs > 0) timestampMs else System.currentTimeMillis(),
+            msgType = "system",
+        )
+        messageRepository.insert(entity)
     }
 
     // ========================================================================
