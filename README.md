@@ -7,8 +7,13 @@ Android client for IRCord — an end-to-end encrypted chat and voice application
 - 🔒 **End-to-end encryption** via Signal Protocol (X3DH + Double Ratchet)
 - 👥 **Group chats** with Sender Keys for efficient multi-party encryption
 - 🎨 **Dark/Light themes** — Tokyo Night dark theme + clean light theme
-- 🎙️ **Voice calls** (planned) — WebRTC-based voice rooms and private calls
+- 🔔 **Push notifications** — Firebase Cloud Messaging integration
+- 🎙️ **Voice calls** — WebRTC-based voice rooms and private calls
 - 🔐 **Ed25519 identity keys** with Argon2id-encrypted storage
+- 🛡️ **Biometric authentication** — optional fingerprint unlock
+- 🚫 **Screen capture protection** — FLAG_SECURE option
+- 🔗 **Link previews** — automatic URL fetching
+- 📎 **File transfers** — upload/download with progress
 
 ## Architecture
 
@@ -42,14 +47,16 @@ Android client for IRCord — an end-to-end encrypted chat and voice application
 | Component | Technology |
 |-----------|------------|
 | Language | Kotlin / C++20 |
-| UI | Jetpack Compose |
+| UI | Jetpack Compose (Material3) |
 | Architecture | MVVM + Repository pattern |
 | DI | Hilt |
-| Database | Room (SQLite) |
+| Database | Room (SQLite) with SQLCipher encryption |
 | Preferences | DataStore |
 | Networking | OkHttp + raw TLS socket |
 | Crypto (native) | libsignal-protocol-c + libsodium |
 | Serialization | Protobuf Lite |
+| Push | Firebase Cloud Messaging |
+| Build | Gradle + CMake |
 
 ## Build Instructions
 
@@ -85,9 +92,9 @@ The first build will:
 4. Generate Java/Kotlin classes from protobuf schemas
 5. Build the Android app
 
-## Maestro Docs Screenshots
+## Documentation Screenshots
 
-The repo now includes a Maestro workspace for website/documentation screenshots in [`.maestro/`](./.maestro).
+The repo includes a Maestro workspace for website/documentation screenshots in [`.maestro/`](./.maestro).
 
 Run from `ircord-android`:
 
@@ -97,6 +104,15 @@ maestro test .maestro
 ```
 
 The flows launch debug-only screenshot scenes through app launch arguments, so setup/chat/settings/voice captures are deterministic and do not need a live server session. Output is written under `.maestro/artifacts/screenshots/android/`.
+
+### Screenshot Scenes
+
+| Scene | Description |
+|-------|-------------|
+| `setup` | Onboarding / login screen |
+| `chat` | Chat interface with messages |
+| `settings` | Settings menu |
+| `voice` | Voice call interface |
 
 ## Native Crypto Module
 
@@ -170,9 +186,10 @@ app/src/main/java/fi/ircord/android/
 │   │   └── Color.kt             # Light + Dark colors
 │   │
 │   └── screen/
-│       └── settings/
-│           ├── SettingsScreen.kt
-│           └── ThemeSelectorDialog.kt
+│       ├── channels/            # Channel list UI
+│       ├── chat/                # Chat UI
+│       ├── settings/            # Settings UI
+│       └── screenshot/          # Screenshot scenes (debug)
 │
 └── di/                          # Hilt modules
 ```
@@ -183,6 +200,8 @@ app/src/main/java/fi/ircord/android/
 - **Server does NOT see**: Message content (E2E encrypted)
 - **Identity keys**: Ed25519, encrypted at rest with Argon2id
 - **Sessions**: Double Ratchet provides forward secrecy
+- **Database**: SQLCipher with 256-bit key from Android Keystore
+- **Biometric**: Optional fingerprint unlock for identity key
 - **Screen capture**: FLAG_SECURE option in settings
 
 ## Wire Protocol
@@ -198,6 +217,19 @@ Length-prefixed Protobuf frames over TLS/TCP:
 
 Max message size: **64 KB**
 
+## IRC Commands
+
+| Command | Description |
+|---------|-------------|
+| `/join #channel` | Join a channel |
+| `/part` | Leave current channel |
+| `/msg <user> <message>` | Send private message |
+| `/me <action>` | Action message |
+| `/nick <new_nick>` | Change nickname |
+| `/call <user>` | Start voice call |
+| `/hangup` | End voice call |
+| `/quit` | Disconnect |
+
 ## Documentation
 
 - [Architecture (Finnish)](docs/android/architecture.md) — Detailed architecture docs
@@ -207,6 +239,7 @@ Max message size: **64 KB**
 
 - [ircord-server](../ircord-server) — C++ relay server
 - [ircord-client](../ircord-client) — Desktop terminal client
+- [ircord-plugin](../ircord-plugin) — Plugin system
 
 ## License
 
