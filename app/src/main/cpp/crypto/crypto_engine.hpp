@@ -134,10 +134,15 @@ public:
                      const std::string& recipient_id);
 
     // ── Group encryption (Sender Keys) ────────────────────────────────────
+    struct GroupEncryptResult {
+        std::vector<uint8_t> ciphertext;
+        std::vector<uint8_t> skdm;  // SenderKeyDistributionMessage (empty if not first)
+    };
+    
     void initGroupSession(const std::string& channel_id, 
                           const std::vector<std::string>& members);
-    std::vector<uint8_t> encryptGroup(const std::string& channel_id,
-                                       const std::string& plaintext);
+    GroupEncryptResult encryptGroup(const std::string& channel_id,
+                                     const std::string& plaintext);
     std::vector<uint8_t> decryptGroup(const std::string& sender_id,
                                        const std::string& channel_id,
                                        const std::vector<uint8_t>& ciphertext,

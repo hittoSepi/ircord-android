@@ -219,6 +219,13 @@ class ChatViewModel @Inject constructor(
                     _uiState.update { it.copy(inputText = "") }
                 }
             }
+            "me", "action" -> {
+                if (args.isNotEmpty()) {
+                    val actionText = args.joinToString(" ")
+                    connectionManager.sendCommand("me", actionText)
+                    _uiState.update { it.copy(inputText = "") }
+                }
+            }
             else -> {
                 // Unknown command, send as chat for now
                 connectionManager.sendChat("#$channelId", input)

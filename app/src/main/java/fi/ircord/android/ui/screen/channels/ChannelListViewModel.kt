@@ -16,6 +16,10 @@ import fi.ircord.android.domain.model.ChannelType
 import fi.ircord.android.domain.model.PresenceStatus
 import fi.ircord.android.domain.model.User
 import fi.ircord.android.domain.model.VoiceParticipant
+import fi.ircord.android.ui.screen.channels.sanitizeChannelName
+import fi.ircord.android.ui.screen.channels.isValidChannelName
+import fi.ircord.android.ui.screen.channels.AvailableChannel
+import fi.ircord.android.ui.screen.channels.JoinDialogState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -34,6 +38,9 @@ data class ChannelListUiState(
     val directMessages: List<User> = emptyList(),
     val isLoading: Boolean = false,
     val isConnected: Boolean = false,
+    val showJoinDialog: Boolean = false,
+    val joinDialogState: JoinDialogState = JoinDialogState.Idle,
+    val availableChannels: List<AvailableChannel> = emptyList(),
 )
 
 data class VoiceChannelInfo(
@@ -55,15 +62,36 @@ class ChannelListViewModel @Inject constructor(
     
     // Track pending channel joins to add them on success
     private val pendingJoins = mutableSetOf<String>()
+    
+    // Track the channel name being joined for error handling
+    private var currentJoinChannel: String? = null
 
     init {
         // Set up command response callback
         connectionManager.onCommandResponse = { success, message, command ->
-            if (command == "join" && success) {
-                // Extract channel name from message: "Joined #channel"
-                val channelMatch = Regex("Joined (#\\w+)").find(message)
-                channelMatch?.groupValues?.get(1)?.let { channelName ->
-                    addJoinedChannel(channelName)
+            if (command == "join") {
+                if (success) {
+                    // Extract channel name from message: "Joined #channel"
+                    val channelMatch = Regex("Joined (#\\w+)").find(message)
+                    channelMatch?.groupValues?.get(1)?.let { channelName ->
+                        // Remove from pending joins and add the channel
+                        pendingJoins.remove(channelName)
+                        addJoinedChannel(channelName)
+                    }
+                    // Update dialog state and close dialog on success
+                    _uiState.update { state ->
+                        state.copy(
+                            joinDialogState = JoinDialogState.Success,
+                            showJoinDialog = false,
+                        )
+                    }
+                    currentJoinChannel = null
+                } else {
+                    // Show error in dialog
+                    _uiState.update { state ->
+                        state.copy(joinDialogState = JoinDialogState.Error(message))
+                    }
+                    pendingJoins.remove(currentJoinChannel)
                 }
             }
         }
@@ -136,13 +164,66 @@ class ChannelListViewModel @Inject constructor(
     }
     
     /**
+     * Show the join channel dialog.
+     */
+    fun showJoinDialog() {
+        _uiState.update { state ->
+            state.copy(
+                showJoinDialog = true,
+                joinDialogState = JoinDialogState.Idle,
+            )
+        }
+        // TODO: Fetch available channels from server if supported
+        // For now, we'll show an empty list or popular channels
+    }
+    
+    /**
+     * Hide the join channel dialog.
+     */
+    fun hideJoinDialog() {
+        _uiState.update { state ->
+            state.copy(
+                showJoinDialog = false,
+                joinDialogState = JoinDialogState.Idle,
+            )
+        }
+        currentJoinChannel = null
+    }
+    
+    /**
+     * Clear any error state in the join dialog.
+     */
+    fun clearJoinError() {
+        _uiState.update { state ->
+            state.copy(joinDialogState = JoinDialogState.Idle)
+        }
+    }
+    
+    /**
      * Join a channel by sending /join command to server.
      */
     fun joinChannel(channelName: String) {
         viewModelScope.launch {
-            pendingJoins.add(channelName)
-            connectionManager.sendCommand("join", channelName)
-            Timber.d("Sent join command for $channelName")
+            // Sanitize the channel name (auto-add # if missing)
+            val sanitizedName = sanitizeChannelName(channelName)
+            
+            // Validate the channel name
+            if (!isValidChannelName(sanitizedName)) {
+                _uiState.update { state ->
+                    state.copy(joinDialogState = JoinDialogState.Error("Invalid channel name"))
+                }
+                return@launch
+            }
+            
+            currentJoinChannel = sanitizedName
+            pendingJoins.add(sanitizedName)
+            
+            _uiState.update { state ->
+                state.copy(joinDialogState = JoinDialogState.Joining)
+            }
+            
+            connectionManager.sendCommand("join", sanitizedName)
+            Timber.d("Sent join command for $sanitizedName")
         }
     }
     
@@ -154,16 +235,20 @@ class ChannelListViewModel @Inject constructor(
         viewModelScope.launch {
             // Remove # prefix if present for storage
             val cleanChannelId = channelId.removePrefix("#")
-            val existing = channelRepository.getAllChannels().first()
-                .any { it.channelId == cleanChannelId }
             
-            if (!existing) {
+            // Check if channel already exists using efficient lookup
+            val existing = channelRepository.getChannelById(cleanChannelId)
+            
+            if (existing == null) {
                 val entity = ChannelEntity(
                     channelId = cleanChannelId,
                     displayName = displayName ?: "#$cleanChannelId",
                     joinedAt = System.currentTimeMillis(),
                 )
                 channelRepository.insert(entity)
+                Timber.d("Added joined channel to database: $cleanChannelId")
+            } else {
+                Timber.d("Channel already exists in database: $cleanChannelId")
             }
         }
     }

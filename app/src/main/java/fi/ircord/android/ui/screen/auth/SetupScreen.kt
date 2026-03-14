@@ -13,16 +13,21 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.Checkbox
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.clickable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -96,6 +101,7 @@ fun SetupScreen(
                     value = state.port,
                     onValueChange = viewModel::onPortChanged,
                     label = { Text("Port") },
+                    placeholder = { Text("6697") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                 )
@@ -119,6 +125,26 @@ fun SetupScreen(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                 )
+
+                Spacer(Modifier.height(IrcordSpacing.md))
+
+                // Remember me checkbox
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { viewModel.onRememberMeChanged(!state.rememberMe) },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(
+                        checked = state.rememberMe,
+                        onCheckedChange = viewModel::onRememberMeChanged,
+                    )
+                    Text(
+                        text = "Remember me",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
 
                 Spacer(Modifier.height(IrcordSpacing.xl))
 
@@ -147,6 +173,29 @@ fun SetupScreen(
                         color = MaterialTheme.colorScheme.error,
                         textAlign = TextAlign.Center,
                     )
+                }
+
+                // Show clear button only if there are saved values
+                if (state.serverAddress.isNotBlank() || state.nickname.isNotBlank()) {
+                    Spacer(Modifier.height(IrcordSpacing.md))
+                    IconButton(
+                        onClick = viewModel::clearSavedConnection,
+                        modifier = Modifier.align(Alignment.CenterHorizontally),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Clear,
+                                contentDescription = "Clear saved connection",
+                                tint = MaterialTheme.colorScheme.error,
+                            )
+                            Spacer(Modifier.padding(start = IrcordSpacing.xs))
+                            Text(
+                                text = "Clear saved connection",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    }
                 }
             }
 
@@ -180,7 +229,7 @@ fun SetupScreen(
                             StepStatus.IN_PROGRESS -> MaterialTheme.colorScheme.primary
                             StepStatus.PENDING -> MaterialTheme.colorScheme.onSurfaceVariant
                         }
-                        androidx.compose.foundation.layout.Row(
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = IrcordSpacing.xs),

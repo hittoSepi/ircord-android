@@ -148,14 +148,22 @@ object NativeCrypto {
     external fun initGroupSession(channelId: String, members: Array<String>)
 
     /**
+     * Result of group encryption - contains ciphertext and optional SKDM for first message.
+     */
+    data class GroupEncryptResult(
+        val ciphertext: ByteArray,
+        val skdm: ByteArray?  // SenderKeyDistributionMessage (null if not first message)
+    )
+
+    /**
      * Encrypt a message for a group/channel.
      * 
      * @param channelId The channel ID
      * @param plaintext The plaintext message bytes
-     * @return Encrypted ciphertext bytes
+     * @return GroupEncryptResult containing ciphertext and optional SKDM
      */
     @JvmStatic
-    external fun encryptGroup(channelId: String, plaintext: ByteArray): ByteArray?
+    external fun encryptGroup(channelId: String, plaintext: ByteArray): GroupEncryptResult?
 
     /**
      * Decrypt a group message.

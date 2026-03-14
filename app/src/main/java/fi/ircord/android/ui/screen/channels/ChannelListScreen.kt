@@ -15,14 +15,17 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -47,107 +50,141 @@ fun ChannelListScreen(
     val state by viewModel.uiState.collectAsState()
     val semantic = IrcordTheme.semanticColors
 
-    Surface(modifier = Modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier
-                .width(IrcordSpacing.drawerWidth)
-                .verticalScroll(rememberScrollState())
-                .padding(vertical = IrcordSpacing.lg),
-        ) {
-            // Current user
-            Row(
-                modifier = Modifier.padding(horizontal = IrcordSpacing.channelItemPadding),
-                verticalAlignment = Alignment.CenterVertically,
+    // Show join channel dialog when requested
+    if (state.showJoinDialog) {
+        JoinChannelDialog(
+            availableChannels = state.availableChannels,
+            dialogState = state.joinDialogState,
+            onJoin = { channelName ->
+                viewModel.joinChannel(channelName)
+            },
+            onDismiss = {
+                viewModel.hideJoinDialog()
+            },
+        )
+    }
+
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = { viewModel.showJoinDialog() },
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
-                StatusBadge(status = state.currentUser.status)
-                Spacer(Modifier.width(IrcordSpacing.sm))
-                Text(state.currentUser.nickname, style = MaterialTheme.typography.titleMedium)
-            }
-
-            Spacer(Modifier.height(IrcordSpacing.lg))
-
-            // Text Channels
-            SectionHeader("TEXT CHANNELS")
-            state.textChannels.forEach { channel ->
-                ChannelItem(
-                    icon = { Icon(Icons.Default.Tag, null, Modifier.size(IrcordSpacing.channelIconSize)) },
-                    name = channel.displayName,
-                    unreadCount = channel.unreadCount,
-                    onClick = { onChannelSelected(channel.channelId) },
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "Join channel",
                 )
             }
+        },
+    ) { paddingValues ->
+        Surface(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues),
+        ) {
+            Column(
+                modifier = Modifier
+                    .width(IrcordSpacing.drawerWidth)
+                    .verticalScroll(rememberScrollState())
+                    .padding(vertical = IrcordSpacing.lg),
+            ) {
+                // Current user
+                Row(
+                    modifier = Modifier.padding(horizontal = IrcordSpacing.channelItemPadding),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    StatusBadge(status = state.currentUser.status)
+                    Spacer(Modifier.width(IrcordSpacing.sm))
+                    Text(state.currentUser.nickname, style = MaterialTheme.typography.titleMedium)
+                }
 
-            Spacer(Modifier.height(IrcordSpacing.lg))
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            Spacer(Modifier.height(IrcordSpacing.sm))
+                Spacer(Modifier.height(IrcordSpacing.lg))
 
-            // Voice Channels
-            SectionHeader("VOICE CHANNELS")
-            state.voiceChannels.forEach { vc ->
-                ChannelItem(
-                    icon = { Icon(Icons.Default.VolumeUp, null, Modifier.size(IrcordSpacing.channelIconSize)) },
-                    name = vc.channel.displayName,
-                    onClick = { onChannelSelected(vc.channel.channelId) },
-                )
-                vc.participants.forEach { p ->
-                    Row(
-                        modifier = Modifier
-                            .padding(start = IrcordSpacing.xxl, end = IrcordSpacing.channelItemPadding)
-                            .height(28.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text("\u251C ", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(p.userId, style = MaterialTheme.typography.bodySmall)
-                        Spacer(Modifier.width(IrcordSpacing.xs))
-                        Icon(
-                            if (p.isMuted) Icons.Default.MicOff else Icons.Default.Mic,
-                            null,
-                            modifier = Modifier.size(14.dp),
-                            tint = if (p.isMuted) semantic.voiceMuted else semantic.voiceActive,
+                // Text Channels
+                SectionHeader("TEXT CHANNELS")
+                state.textChannels.forEach { channel ->
+                    ChannelItem(
+                        icon = { Icon(Icons.Default.Tag, null, Modifier.size(IrcordSpacing.channelIconSize)) },
+                        name = channel.displayName,
+                        unreadCount = channel.unreadCount,
+                        onClick = { onChannelSelected(channel.channelId) },
+                    )
+                }
+
+                Spacer(Modifier.height(IrcordSpacing.lg))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                Spacer(Modifier.height(IrcordSpacing.sm))
+
+                // Voice Channels
+                SectionHeader("VOICE CHANNELS")
+                state.voiceChannels.forEach { vc ->
+                    ChannelItem(
+                        icon = { Icon(Icons.Default.VolumeUp, null, Modifier.size(IrcordSpacing.channelIconSize)) },
+                        name = vc.channel.displayName,
+                        onClick = { onChannelSelected(vc.channel.channelId) },
+                    )
+                    vc.participants.forEach { p ->
+                        Row(
+                            modifier = Modifier
+                                .padding(start = IrcordSpacing.xxl, end = IrcordSpacing.channelItemPadding)
+                                .height(28.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text("\u251C ", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(p.userId, style = MaterialTheme.typography.bodySmall)
+                            Spacer(Modifier.width(IrcordSpacing.xs))
+                            Icon(
+                                if (p.isMuted) Icons.Default.MicOff else Icons.Default.Mic,
+                                null,
+                                modifier = Modifier.size(14.dp),
+                                tint = if (p.isMuted) semantic.voiceMuted else semantic.voiceActive,
+                            )
+                        }
+                    }
+                    if (vc.participants.isEmpty()) {
+                        Text(
+                            "(empty)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = IrcordSpacing.xxl),
                         )
                     }
                 }
-                if (vc.participants.isEmpty()) {
-                    Text(
-                        "(empty)",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = IrcordSpacing.xxl),
-                    )
+
+                Spacer(Modifier.height(IrcordSpacing.lg))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                Spacer(Modifier.height(IrcordSpacing.sm))
+
+                // Direct Messages
+                SectionHeader("DIRECT MESSAGES")
+                state.directMessages.forEach { user ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(IrcordSpacing.channelItemHeight)
+                            .clickable { onChannelSelected(user.userId) }
+                            .padding(horizontal = IrcordSpacing.channelItemPadding),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        StatusBadge(status = user.status)
+                        Spacer(Modifier.width(IrcordSpacing.sm))
+                        Text(user.nickname, style = MaterialTheme.typography.bodyMedium)
+                    }
                 }
-            }
 
-            Spacer(Modifier.height(IrcordSpacing.lg))
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            Spacer(Modifier.height(IrcordSpacing.sm))
+                Spacer(Modifier.weight(1f))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
-            // Direct Messages
-            SectionHeader("DIRECT MESSAGES")
-            state.directMessages.forEach { user ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(IrcordSpacing.channelItemHeight)
-                        .clickable { onChannelSelected(user.userId) }
-                        .padding(horizontal = IrcordSpacing.channelItemPadding),
-                    verticalAlignment = Alignment.CenterVertically,
+                TextButton(
+                    onClick = onNavigateToSettings,
+                    modifier = Modifier.padding(horizontal = IrcordSpacing.channelItemPadding),
                 ) {
-                    StatusBadge(status = user.status)
+                    Icon(Icons.Default.Settings, null)
                     Spacer(Modifier.width(IrcordSpacing.sm))
-                    Text(user.nickname, style = MaterialTheme.typography.bodyMedium)
+                    Text("Settings")
                 }
-            }
-
-            Spacer(Modifier.weight(1f))
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-
-            TextButton(
-                onClick = onNavigateToSettings,
-                modifier = Modifier.padding(horizontal = IrcordSpacing.channelItemPadding),
-            ) {
-                Icon(Icons.Default.Settings, null)
-                Spacer(Modifier.width(IrcordSpacing.sm))
-                Text("Settings")
             }
         }
     }

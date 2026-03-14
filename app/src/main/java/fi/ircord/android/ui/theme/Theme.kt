@@ -35,15 +35,17 @@ object IrcordElevation {
 @Composable
 fun IrcordTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
+    fontScale: Float = 1.0f,
     content: @Composable () -> Unit,
 ) {
     val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
     val semanticColors = if (darkTheme) DarkIrcordColors else LightIrcordColors
+    val typography = createScaledTypography(fontScale)
 
     CompositionLocalProvider(LocalIrcordColors provides semanticColors) {
         MaterialTheme(
             colorScheme = colorScheme,
-            typography = IrcordTypography,
+            typography = typography,
             shapes = IrcordShapes,
             content = content,
         )

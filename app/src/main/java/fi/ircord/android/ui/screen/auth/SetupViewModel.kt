@@ -23,6 +23,7 @@ data class SetupUiState(
     val port: String = "6697",
     val nickname: String = "",
     val inviteCode: String = "",
+    val rememberMe: Boolean = false,
     val isGenerating: Boolean = false,
     val progress: Float = 0f,
     val currentStep: String = "",
@@ -36,6 +37,7 @@ data class SetupUiState(
     val fingerprint: String? = null,
     val error: String? = null,
     val isComplete: Boolean = false,
+    val isCleared: Boolean = false,
 )
 
 data class SetupStep(val label: String, val status: StepStatus)
@@ -52,16 +54,22 @@ class SetupViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            val savedAddress = userPreferences.serverAddress.first()
-            val savedPort = userPreferences.port.first()
-            val savedNickname = userPreferences.nickname.first()
+            val rememberMe = userPreferences.rememberMe.first()
+            
+            // Only load saved values if rememberMe is enabled
+            if (rememberMe) {
+                val savedAddress = userPreferences.serverAddress.first()
+                val savedPort = userPreferences.port.first()
+                val savedNickname = userPreferences.nickname.first()
 
-            _uiState.update { state ->
-                state.copy(
-                    serverAddress = savedAddress ?: "",
-                    port = savedPort.toString(),
-                    nickname = savedNickname ?: "",
-                )
+                _uiState.update { state ->
+                    state.copy(
+                        serverAddress = savedAddress ?: "",
+                        port = savedPort.toString(),
+                        nickname = savedNickname ?: "",
+                        rememberMe = true,
+                    )
+                }
             }
         }
     }
@@ -70,6 +78,30 @@ class SetupViewModel @Inject constructor(
     fun onPortChanged(value: String) = _uiState.update { it.copy(port = value) }
     fun onNicknameChanged(value: String) = _uiState.update { it.copy(nickname = value) }
     fun onInviteCodeChanged(value: String) = _uiState.update { it.copy(inviteCode = value) }
+    fun onRememberMeChanged(value: Boolean) = _uiState.update { it.copy(rememberMe = value) }
+
+    /**
+     * Clear saved connection settings and reset the form.
+     */
+    fun clearSavedConnection() {
+        viewModelScope.launch {
+            userPreferences.clearSavedConnection()
+            _uiState.update { state ->
+                state.copy(
+                    serverAddress = "",
+                    port = "6697",
+                    nickname = "",
+                    rememberMe = false,
+                    isCleared = true,
+                )
+            }
+            // Reset the cleared flag after a short delay
+            delay(100)
+            _uiState.update { it.copy(isCleared = false) }
+        }
+    }
+
+
 
     fun generateKeysAndJoin() {
         viewModelScope.launch {
@@ -115,13 +147,15 @@ class SetupViewModel @Inject constructor(
 
                 // Step 4: Save settings
                 updateStep(3, StepStatus.IN_PROGRESS)
-                val port = state.port.toIntOrNull() ?: 6667
+                val port = state.port.toIntOrNull() ?: 6697
                 // Auto-detect TLS: 6667 = plaintext, others = TLS
                 val useTls = port != 6667
-                userPreferences.saveServerSettings(
-                    state.serverAddress,
-                    port,
-                    useTls
+                userPreferences.saveConnectionSettings(
+                    address = state.serverAddress,
+                    port = port,
+                    nickname = state.nickname,
+                    useTls = useTls,
+                    rememberMe = state.rememberMe,
                 )
                 userPreferences.saveIdentity(state.nickname, fingerprint, identityPub)
                 delay(200)

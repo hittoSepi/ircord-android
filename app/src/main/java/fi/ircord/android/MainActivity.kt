@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.AndroidEntryPoint
 import fi.ircord.android.ui.navigation.IrcordNavGraph
+import fi.ircord.android.ui.theme.FontScaleViewModel
 import fi.ircord.android.ui.theme.IrcordTheme
 import fi.ircord.android.ui.theme.ThemeViewModel
 
@@ -21,14 +22,19 @@ import fi.ircord.android.ui.theme.ThemeViewModel
 class MainActivity : ComponentActivity() {
 
     private val themeViewModel: ThemeViewModel by viewModels()
+    private val fontScaleViewModel: FontScaleViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             val isDarkTheme by themeViewModel.isDarkTheme.collectAsStateWithLifecycle()
+            val fontScale by fontScaleViewModel.fontScale.collectAsStateWithLifecycle()
             
-            IrcordAppTheme(isDarkTheme = isDarkTheme) {
+            IrcordAppTheme(
+                isDarkTheme = isDarkTheme,
+                fontScale = fontScale,
+            ) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     IrcordNavGraph()
                 }
@@ -38,12 +44,13 @@ class MainActivity : ComponentActivity() {
 }
 
 /**
- * Wrapper that handles theme mode (system/light/dark).
+ * Wrapper that handles theme mode (system/light/dark) and font scaling.
  * If isDarkTheme is null, follows system setting.
  */
 @Composable
 private fun IrcordAppTheme(
     isDarkTheme: Boolean?,
+    fontScale: Float,
     content: @Composable () -> Unit,
 ) {
     val darkTheme = when (isDarkTheme) {
@@ -52,5 +59,9 @@ private fun IrcordAppTheme(
         null -> isSystemInDarkTheme() // Follow system
     }
     
-    IrcordTheme(darkTheme = darkTheme, content = content)
+    IrcordTheme(
+        darkTheme = darkTheme,
+        fontScale = fontScale,
+        content = content,
+    )
 }

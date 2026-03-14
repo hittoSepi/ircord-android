@@ -236,31 +236,25 @@ class IrcordConnectionManager @Inject constructor(
     private fun sendChannelMessage(channelId: String, plaintext: String) {
         Timber.d("Sending channel message to '$channelId' as '$userId': $plaintext")
         
-        // Try to encrypt - if no session exists, init one first
-        var ciphertextBytes = NativeCrypto.encryptGroup(channelId, plaintext.toByteArray(Charsets.UTF_8))
+        // Encrypt - this creates session automatically on first call and returns SKDM
+        val encryptResult = NativeCrypto.encryptGroup(channelId, plaintext.toByteArray(Charsets.UTF_8))
         
-        if (ciphertextBytes == null) {
-            // No group session yet - initialize one
-            Timber.i("Initializing group session for $channelId")
-            NativeCrypto.initGroupSession(channelId, emptyArray())
-            
-            // Try encrypting again
-            ciphertextBytes = NativeCrypto.encryptGroup(channelId, plaintext.toByteArray(Charsets.UTF_8))
-            
-            if (ciphertextBytes == null) {
-                Timber.e("Failed to encrypt group message even after init for $channelId")
-                return
-            }
+        if (encryptResult == null) {
+            Timber.e("Failed to encrypt group message for $channelId")
+            return
         }
         
-        Timber.d("Encrypted message: ${ciphertextBytes.size} bytes")
+        val ciphertextBytes = encryptResult.ciphertext
+        val skdmBytes = encryptResult.skdm
+        
+        Timber.d("Encrypted message: ${ciphertextBytes.size} bytes, SKDM: ${skdmBytes?.size ?: 0} bytes")
 
-        // Build ChatEnvelope with sender info
+        // Build ChatEnvelope with sender info and SKDM (if first message)
         val chat = createGroupEnvelope(
             senderId = userId,
             channelId = channelId,
             ciphertext = ciphertextBytes,
-            skdm = null // SKDM is handled separately on first message
+            skdm = skdmBytes  // Include SKDM for first message so receivers can decrypt
         )
         
         val chatBytes = chat.toByteArray()

@@ -463,10 +463,10 @@ Java_fi_ircord_android_crypto_NativeCrypto_initGroupSession(
     env->ReleaseStringUTFChars(channelId, channel);
 }
 
-JNIEXPORT jbyteArray JNICALL
+JNIEXPORT jobject JNICALL
 Java_fi_ircord_android_crypto_NativeCrypto_encryptGroup(
         JNIEnv* env,
-        jclass /*clazz*/,
+        jclass clazz,
         jstring channelId,
         jbyteArray plaintext) {
     if (!g_engine || !g_engine->ready()) {
@@ -480,7 +480,34 @@ Java_fi_ircord_android_crypto_NativeCrypto_encryptGroup(
     auto result = g_engine->encryptGroup(channel, plain);
     
     env->ReleaseStringUTFChars(channelId, channel);
-    return vectorToJbyteArray(env, result);
+    
+    if (result.ciphertext.empty()) {
+        return nullptr;
+    }
+    
+    // Find GroupEncryptResult class
+    jclass resultClass = env->FindClass("fi/ircord/android/crypto/NativeCrypto$GroupEncryptResult");
+    if (!resultClass) {
+        LOGE("Failed to find GroupEncryptResult class");
+        return nullptr;
+    }
+    
+    jmethodID constructor = env->GetMethodID(resultClass, "<init>", "([B[B)V");
+    if (!constructor) {
+        LOGE("Failed to find GroupEncryptResult constructor");
+        return nullptr;
+    }
+    
+    jbyteArray ctArray = vectorToJbyteArray(env, result.ciphertext);
+    jbyteArray skdmArray = result.skdm.empty() ? nullptr : vectorToJbyteArray(env, result.skdm);
+    
+    jobject resultObj = env->NewObject(resultClass, constructor, ctArray, skdmArray);
+    
+    env->DeleteLocalRef(ctArray);
+    if (skdmArray) env->DeleteLocalRef(skdmArray);
+    env->DeleteLocalRef(resultClass);
+    
+    return resultObj;
 }
 
 JNIEXPORT jbyteArray JNICALL

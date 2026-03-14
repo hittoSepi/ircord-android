@@ -12,6 +12,8 @@ class ChannelRepository @Inject constructor(
 ) {
     fun getAllChannels(): Flow<List<ChannelEntity>> = channelDao.getAllChannels()
 
+    suspend fun getChannelById(channelId: String): ChannelEntity? = channelDao.getChannelById(channelId)
+
     suspend fun insert(channel: ChannelEntity) = channelDao.insert(channel)
 
     suspend fun updateLastRead(channelId: String, ts: Long) =

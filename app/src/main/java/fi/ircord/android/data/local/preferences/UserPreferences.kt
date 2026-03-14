@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -44,6 +45,8 @@ class UserPreferences @Inject constructor(
     val voiceBitrate: Flow<String> = dataStore.data.map { it[KEY_VOICE_BITRATE] ?: BITRATE_64K }
     val screenCapture: Flow<Boolean> = dataStore.data.map { it[KEY_SCREEN_CAPTURE] ?: false }
     val useTls: Flow<Boolean> = dataStore.data.map { it[KEY_USE_TLS] ?: (it[KEY_PORT] != 6667) }
+    val rememberMe: Flow<Boolean> = dataStore.data.map { it[KEY_REMEMBER_ME] ?: false }
+    val fontScale: Flow<Float> = dataStore.data.map { it[KEY_FONT_SCALE] ?: FONT_SCALE_NORMAL }
 
     suspend fun saveServerSettings(address: String, port: Int = DEFAULT_PORT, tls: Boolean? = null) {
         dataStore.edit { prefs ->
@@ -76,6 +79,48 @@ class UserPreferences @Inject constructor(
         }
     }
 
+    /**
+     * Save connection settings during setup.
+     * These values are used for connecting. The rememberMe flag
+     * controls whether they're auto-loaded on next app launch.
+     */
+    suspend fun saveConnectionSettings(
+        address: String,
+        port: Int,
+        nickname: String,
+        useTls: Boolean? = null,
+        rememberMe: Boolean,
+    ) {
+        dataStore.edit { prefs ->
+            prefs[KEY_REMEMBER_ME] = rememberMe
+            // Always save connection settings (needed for current connection)
+            prefs[KEY_SERVER_ADDRESS] = address
+            prefs[KEY_PORT] = port
+            prefs[KEY_NICKNAME] = nickname
+            useTls?.let { prefs[KEY_USE_TLS] = it }
+        }
+    }
+
+    /**
+     * Clear saved connection settings (host, port, username).
+     * Does not clear identity or other settings.
+     */
+    suspend fun clearSavedConnection() {
+        dataStore.edit { prefs ->
+            prefs.remove(KEY_SERVER_ADDRESS)
+            prefs.remove(KEY_PORT)
+            prefs.remove(KEY_NICKNAME)
+            prefs.remove(KEY_USE_TLS)
+            prefs[KEY_REMEMBER_ME] = false
+        }
+    }
+
+    suspend fun setRememberMe(enabled: Boolean) {
+        dataStore.edit { prefs ->
+            prefs[KEY_REMEMBER_ME] = enabled
+        }
+    }
+
     // UI settings setters
     suspend fun setThemeMode(mode: String) = dataStore.edit { it[KEY_THEME_MODE] = mode }
     suspend fun setMessageStyle(style: String) = dataStore.edit { it[KEY_MESSAGE_STYLE] = style }
@@ -88,9 +133,10 @@ class UserPreferences @Inject constructor(
     suspend fun setNoiseSuppression(enabled: Boolean) = dataStore.edit { it[KEY_NOISE_SUPPRESSION] = enabled }
     suspend fun setVoiceBitrate(bitrate: String) = dataStore.edit { it[KEY_VOICE_BITRATE] = bitrate }
     suspend fun setScreenCapture(enabled: Boolean) = dataStore.edit { it[KEY_SCREEN_CAPTURE] = enabled }
+    suspend fun setFontScale(scale: Float) = dataStore.edit { it[KEY_FONT_SCALE] = scale }
 
     companion object {
-        const val DEFAULT_PORT = 6667
+        const val DEFAULT_PORT = 6697
         
         const val THEME_DARK = "Dark"
         const val THEME_LIGHT = "Light"
@@ -106,6 +152,11 @@ class UserPreferences @Inject constructor(
         const val BITRATE_64K = "64 kbps"
         const val BITRATE_96K = "96 kbps"
         const val BITRATE_128K = "128 kbps"
+        
+        // Font scale options
+        const val FONT_SCALE_SMALL = 0.85f
+        const val FONT_SCALE_NORMAL = 1.0f
+        const val FONT_SCALE_LARGE = 1.15f
 
         private val KEY_SERVER_ADDRESS = stringPreferencesKey("server_address")
         private val KEY_PORT = intPreferencesKey("port")
@@ -126,5 +177,7 @@ class UserPreferences @Inject constructor(
         private val KEY_VOICE_BITRATE = stringPreferencesKey("voice_bitrate")
         private val KEY_SCREEN_CAPTURE = booleanPreferencesKey("screen_capture")
         private val KEY_USE_TLS = booleanPreferencesKey("use_tls")
+        private val KEY_REMEMBER_ME = booleanPreferencesKey("remember_me")
+        private val KEY_FONT_SCALE = floatPreferencesKey("font_scale")
     }
 }

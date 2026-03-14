@@ -48,6 +48,7 @@ fun SettingsScreen(
     
     // Dialog states
     var showThemeDialog by remember { mutableStateOf(false) }
+    var showFontSizeDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -101,6 +102,18 @@ fun SettingsScreen(
                 value = themeDisplayName,
                 onClick = { showThemeDialog = true },
             )
+            // Font size selector - clickable
+            val fontScaleDisplayName = when (state.fontScale) {
+                UserPreferences.FONT_SCALE_SMALL -> "Small"
+                UserPreferences.FONT_SCALE_NORMAL -> "Normal"
+                UserPreferences.FONT_SCALE_LARGE -> "Large"
+                else -> "Normal"
+            }
+            SettingsRow(
+                label = "Font size",
+                value = fontScaleDisplayName,
+                onClick = { showFontSizeDialog = true },
+            )
             SettingsRow("Message style", state.messageStyle)
             SettingsRow("Timestamp", state.timestampFormat)
             SettingsToggle("Compact mode", state.compactMode, viewModel::setCompactMode)
@@ -140,6 +153,18 @@ fun SettingsScreen(
                 showThemeDialog = false
             },
             onDismiss = { showThemeDialog = false },
+        )
+    }
+    
+    // Font size selector dialog
+    if (showFontSizeDialog) {
+        FontSizeSelectorDialog(
+            currentFontScale = state.fontScale,
+            onFontScaleSelected = { scale ->
+                viewModel.setFontScale(scale)
+                showFontSizeDialog = false
+            },
+            onDismiss = { showFontSizeDialog = false },
         )
     }
 }

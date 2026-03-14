@@ -15,6 +15,88 @@ val MonoStyle = TextStyle(
     letterSpacing = 0.sp,
 )
 
+/**
+ * Creates a scaled Typography based on the given font scale factor.
+ * @param scale The font scale factor (0.85f for Small, 1.0f for Normal, 1.15f for Large)
+ * @return A Typography instance with scaled font sizes
+ */
+fun createScaledTypography(scale: Float): Typography {
+    return Typography(
+        headlineLarge = TextStyle(
+            fontFamily = FontFamily.Default,
+            fontWeight = FontWeight.Bold,
+            fontSize = (24.sp * scale).coerceAtLeast(20.sp),
+            lineHeight = (32.sp * scale).coerceAtLeast(28.sp),
+        ),
+        headlineMedium = TextStyle(
+            fontFamily = FontFamily.Default,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = (20.sp * scale).coerceAtLeast(16.sp),
+            lineHeight = (28.sp * scale).coerceAtLeast(24.sp),
+        ),
+        titleLarge = TextStyle(
+            fontFamily = FontFamily.Default,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = (18.sp * scale).coerceAtLeast(14.sp),
+            lineHeight = (24.sp * scale).coerceAtLeast(20.sp),
+        ),
+        titleMedium = TextStyle(
+            fontFamily = FontFamily.Default,
+            fontWeight = FontWeight.Medium,
+            fontSize = (16.sp * scale).coerceAtLeast(12.sp),
+            lineHeight = (22.sp * scale).coerceAtLeast(18.sp),
+        ),
+        titleSmall = TextStyle(
+            fontFamily = FontFamily.Default,
+            fontWeight = FontWeight.Medium,
+            fontSize = (14.sp * scale).coerceAtLeast(12.sp),
+            lineHeight = (20.sp * scale).coerceAtLeast(16.sp),
+        ),
+        bodyLarge = TextStyle(
+            fontFamily = FontFamily.Default,
+            fontWeight = FontWeight.Normal,
+            fontSize = (16.sp * scale).coerceAtLeast(14.sp),
+            lineHeight = (24.sp * scale).coerceAtLeast(20.sp),
+            letterSpacing = 0.15.sp,
+        ),
+        bodyMedium = TextStyle(
+            fontFamily = FontFamily.Default,
+            fontWeight = FontWeight.Normal,
+            fontSize = (14.sp * scale).coerceAtLeast(12.sp),
+            lineHeight = (20.sp * scale).coerceAtLeast(16.sp),
+            letterSpacing = 0.25.sp,
+        ),
+        bodySmall = TextStyle(
+            fontFamily = FontFamily.Default,
+            fontWeight = FontWeight.Normal,
+            fontSize = (12.sp * scale).coerceAtLeast(10.sp),
+            lineHeight = (16.sp * scale).coerceAtLeast(14.sp),
+            letterSpacing = 0.4.sp,
+        ),
+        labelLarge = TextStyle(
+            fontFamily = FontFamily.Default,
+            fontWeight = FontWeight.Medium,
+            fontSize = (14.sp * scale).coerceAtLeast(12.sp),
+            lineHeight = (20.sp * scale).coerceAtLeast(16.sp),
+            letterSpacing = 0.1.sp,
+        ),
+        labelMedium = TextStyle(
+            fontFamily = FontFamily.Default,
+            fontWeight = FontWeight.Medium,
+            fontSize = (12.sp * scale).coerceAtLeast(10.sp),
+            lineHeight = (16.sp * scale).coerceAtLeast(14.sp),
+            letterSpacing = 0.5.sp,
+        ),
+        labelSmall = TextStyle(
+            fontFamily = FontFamily.Default,
+            fontWeight = FontWeight.Medium,
+            fontSize = (10.sp * scale).coerceAtLeast(8.sp),
+            lineHeight = (14.sp * scale).coerceAtLeast(12.sp),
+            letterSpacing = 0.5.sp,
+        ),
+    )
+}
+
 val IrcordTypography = Typography(
     headlineLarge = TextStyle(
         fontFamily = FontFamily.Default,

@@ -1464,36 +1464,40 @@ void CryptoEngine::initGroupSession(const std::string& channel_id,
     }
 }
 
-std::vector<uint8_t> CryptoEngine::encryptGroup(const std::string& channel_id,
-                                                 const std::string& plaintext) {
+CryptoEngine::GroupEncryptResult CryptoEngine::encryptGroup(const std::string& channel_id,
+                                                               const std::string& plaintext) {
+    GroupEncryptResult result;
+    
     if (!group_session_) {
         LOGE("Group session not available");
-        return {};
+        return result;
     }
     
     // Check if we need to create a session first
     auto it = group_sessions_initialized_.find(channel_id);
-    if (it == group_sessions_initialized_.end() || !it->second) {
+    bool is_first = (it == group_sessions_initialized_.end() || !it->second);
+    
+    if (is_first) {
         LOGD("Creating group session for %s on first encrypt", channel_id.c_str());
         try {
-            auto skdm = group_session_->create_session(channel_id);
+            result.skdm = group_session_->create_session(channel_id);
             group_sessions_initialized_[channel_id] = true;
             LOGD("Created group session for %s, SKDM size: %zu bytes",
-                 channel_id.c_str(), skdm.size());
+                 channel_id.c_str(), result.skdm.size());
         } catch (const std::exception& e) {
             LOGE("Failed to create group session: %s", e.what());
-            return {};
+            return result;
         }
     }
     
     try {
         std::vector<uint8_t> plain_vec(plaintext.begin(), plaintext.end());
-        auto result = group_session_->encrypt(channel_id, plain_vec);
-        LOGD("Encrypted group message for %s: %zu bytes", channel_id.c_str(), result.size());
+        result.ciphertext = group_session_->encrypt(channel_id, plain_vec);
+        LOGD("Encrypted group message for %s: %zu bytes", channel_id.c_str(), result.ciphertext.size());
         return result;
     } catch (const std::exception& e) {
         LOGE("Group encrypt failed for %s: %s", channel_id.c_str(), e.what());
-        return {};
+        return result;
     }
 }
 

@@ -19,7 +19,7 @@ data class SettingsUiState(
     val nickname: String = "",
     val identityFingerprint: String = "",
     val serverAddress: String = "",
-    val port: String = "6667",
+    val port: String = "6697",
     val isConnected: Boolean = false,
     val themeMode: String = UserPreferences.THEME_SYSTEM,
     val messageStyle: String = UserPreferences.STYLE_IRC,
@@ -32,6 +32,7 @@ data class SettingsUiState(
     val noiseSuppression: Boolean = true,
     val voiceBitrate: String = UserPreferences.BITRATE_64K,
     val screenCapture: Boolean = false,
+    val fontScale: Float = UserPreferences.FONT_SCALE_NORMAL,
     val version: String = "0.1.0",
     val protocolVersion: String = "v1",
 )
@@ -64,6 +65,7 @@ class SettingsViewModel @Inject constructor(
             userPreferences.noiseSuppression,
             userPreferences.voiceBitrate,
             userPreferences.screenCapture,
+            userPreferences.fontScale,
         ) { values ->
             val nickname = values[0] as String? ?: ""
             val fingerprint = values[1] as String? ?: "Not generated"
@@ -89,6 +91,7 @@ class SettingsViewModel @Inject constructor(
                     noiseSuppression = values[13] as Boolean,
                     voiceBitrate = values[14] as String,
                     screenCapture = values[15] as Boolean,
+                    fontScale = values[16] as Float,
                 )
             }
         }.launchIn(viewModelScope)
@@ -138,6 +141,10 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { userPreferences.setScreenCapture(v) }
     }
     
+    fun setFontScale(scale: Float) {
+        viewModelScope.launch { userPreferences.setFontScale(scale) }
+    }
+    
     fun disconnect() {
         viewModelScope.launch {
             ircordSocket.disconnect()
@@ -148,7 +155,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             val state = _uiState.value
             if (state.serverAddress.isNotBlank()) {
-                ircordSocket.connect(state.serverAddress, state.port.toIntOrNull() ?: 6667)
+                ircordSocket.connect(state.serverAddress, state.port.toIntOrNull() ?: 6697)
             }
         }
     }

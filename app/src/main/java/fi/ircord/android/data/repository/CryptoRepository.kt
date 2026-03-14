@@ -163,9 +163,9 @@ class CryptoRepository @Inject constructor(
      * 
      * @param channelId The channel ID
      * @param plaintext The plaintext message
-     * @return Encrypted ciphertext
+     * @return GroupEncryptResult containing ciphertext and optional SKDM
      */
-    suspend fun encryptGroup(channelId: String, plaintext: String): ByteArray? =
+    suspend fun encryptGroup(channelId: String, plaintext: String): NativeCrypto.GroupEncryptResult? =
         withContext(Dispatchers.IO) {
             if (!isInitialized) return@withContext null
             NativeCrypto.encryptGroup(channelId, plaintext.toByteArray(Charsets.UTF_8))
