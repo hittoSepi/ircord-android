@@ -4,6 +4,7 @@ import com.google.protobuf.ByteString
 import fi.ircord.android.data.local.entity.MessageEntity
 import fi.ircord.android.data.local.preferences.UserPreferences
 import fi.ircord.android.data.remote.ConnectionState
+import fi.ircord.android.data.repository.KeyRepository
 import fi.ircord.android.data.repository.MessageRepository
 import fi.ircord.android.crypto.NativeCrypto
 import fi.ircord.android.crypto.NativeStore
@@ -35,6 +36,7 @@ class IrcordConnectionManager @Inject constructor(
     private val socket: IrcordSocket,
     private val userPreferences: UserPreferences,
     private val messageRepository: MessageRepository,
+    private val keyRepository: KeyRepository,
     private val nativeStore: NativeStore,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -63,6 +65,13 @@ class IrcordConnectionManager @Inject constructor(
 
     // Callback for user info (WHOIS response)
     var onUserInfo: ((userId: String, nickname: String, isOnline: Boolean, channels: List<String>, fingerprint: String) -> Unit)? = null
+
+    // Callback for presence updates
+    var onPresenceUpdate: ((userId: String, status: String) -> Unit)? = null
+
+    // Tracked online users
+    private val _onlineUsers = MutableStateFlow<Set<String>>(emptySet())
+    val onlineUsers: StateFlow<Set<String>> = _onlineUsers.asStateFlow()
 
     /**
      * Connect to the server, authenticate, and start the message loop.
@@ -452,11 +461,26 @@ class IrcordConnectionManager @Inject constructor(
     // ========================================================================
 
     private fun handlePresence(payload: ByteArray) {
-        try {
-            val update = PresenceUpdate.parseFrom(payload)
-            Timber.d("Presence: ${update.userId} -> ${update.status}")
-        } catch (e: Exception) {
-            Timber.e(e, "Error parsing presence")
+        scope.launch {
+            try {
+                val update = PresenceUpdate.parseFrom(payload)
+                Timber.d("Presence: ${update.userId} -> ${update.status}")
+                val statusName = update.status.name.lowercase()
+                
+                // Update in-memory online users set
+                _onlineUsers.value = if (statusName == "online" || statusName == "away") {
+                    _onlineUsers.value + update.userId
+                } else {
+                    _onlineUsers.value - update.userId
+                }
+                
+                // Persist to database
+                keyRepository.updatePresence(update.userId, statusName)
+                
+                onPresenceUpdate?.invoke(update.userId, statusName)
+            } catch (e: Exception) {
+                Timber.e(e, "Error parsing presence")
+            }
         }
     }
 

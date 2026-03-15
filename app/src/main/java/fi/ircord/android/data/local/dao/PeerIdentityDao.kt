@@ -16,9 +16,18 @@ interface PeerIdentityDao {
     @Query("SELECT * FROM peer_identities")
     fun getAll(): Flow<List<PeerIdentityEntity>>
 
+    @Query("SELECT * FROM peer_identities WHERE presence_status = 'online' OR presence_status = 'away'")
+    fun getOnlineUsers(): Flow<List<PeerIdentityEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(identity: PeerIdentityEntity)
 
     @Query("UPDATE peer_identities SET trust_status = :status WHERE user_id = :userId")
     suspend fun updateTrust(userId: String, status: String)
+
+    @Query("UPDATE peer_identities SET presence_status = :status, presence_updated_at = :timestamp WHERE user_id = :userId")
+    suspend fun updatePresence(userId: String, status: String, timestamp: Long = System.currentTimeMillis())
+
+    @Query("SELECT presence_status FROM peer_identities WHERE user_id = :userId")
+    suspend fun getPresenceStatus(userId: String): String?
 }

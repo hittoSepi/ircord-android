@@ -11,6 +11,7 @@ import fi.ircord.android.data.remote.AuthState
 import fi.ircord.android.data.remote.ConnectionState
 import fi.ircord.android.data.remote.IrcordConnectionManager
 import fi.ircord.android.data.remote.IrcordSocket
+import fi.ircord.android.data.repository.ChannelRepository
 import fi.ircord.android.data.repository.FileRepository
 import fi.ircord.android.data.repository.MessageRepository
 import fi.ircord.android.data.repository.VoiceRepository
@@ -33,6 +34,7 @@ import javax.inject.Inject
 data class ChatUiState(
     val channelId: String = "general",
     val channelName: String = "#general",
+    val topic: String? = null,
     val isEncrypted: Boolean = true,
     val isConnected: Boolean = false,
     val currentUserId: String = "",
@@ -45,12 +47,16 @@ data class ChatUiState(
     val activeFileTransfers: List<FileTransfer> = emptyList(),
     val connectionError: String? = null,
     val isConnecting: Boolean = false,
+    val isSearchActive: Boolean = false,
+    val searchQuery: String = "",
+    val searchResults: List<Message> = emptyList(),
 )
 
 @HiltViewModel
 class ChatViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val messageRepository: MessageRepository,
+    private val channelRepository: ChannelRepository,
     private val voiceRepository: VoiceRepository,
     private val fileRepository: FileRepository,
     private val userPreferences: UserPreferences,
@@ -76,10 +82,29 @@ class ChatViewModel @Inject constructor(
             val nickname = userPreferences.nickname.first() ?: ""
             _uiState.update { it.copy(currentUserId = nickname) }
             connectionManager.start()
-            
+
+            // Load topic from DB
+            val channel = channelRepository.getChannelById(channelId)
+            channel?.topic?.let { topic ->
+                _uiState.update { it.copy(topic = topic) }
+            }
+
             // Auto-join the channel when connected
             kotlinx.coroutines.delay(1000) // Wait for connection
             joinChannel("#$channelId")
+        }
+
+        // Listen for command responses (topic, names, etc.)
+        connectionManager.onCommandResponse = { success, message, command ->
+            if (success && command == "topic") {
+                // Message format: "Topic for #channel: the topic text"
+                val topicMatch = Regex("Topic for #\\S+: (.+)").find(message)
+                val topic = topicMatch?.groupValues?.get(1) ?: message
+                _uiState.update { it.copy(topic = topic) }
+                viewModelScope.launch {
+                    channelRepository.updateTopic(channelId, topic)
+                }
+            }
         }
 
         // Observe screen capture setting
@@ -304,6 +329,34 @@ class ChatViewModel @Inject constructor(
         }
     }
     
+    // ============================================================================
+    // Search
+    // ============================================================================
+
+    fun toggleSearch() {
+        _uiState.update {
+            if (it.isSearchActive) {
+                it.copy(isSearchActive = false, searchQuery = "", searchResults = emptyList())
+            } else {
+                it.copy(isSearchActive = true)
+            }
+        }
+    }
+
+    fun onSearchQueryChanged(query: String) {
+        _uiState.update { it.copy(searchQuery = query) }
+        if (query.length >= 2) {
+            viewModelScope.launch {
+                val results = messageRepository.searchMessages(channelId, query)
+                _uiState.update { state ->
+                    state.copy(searchResults = results.map { it.toDomainModel() })
+                }
+            }
+        } else {
+            _uiState.update { it.copy(searchResults = emptyList()) }
+        }
+    }
+
     fun retryMessage(messageId: Long) {
         viewModelScope.launch {
             val msg = messageRepository.getMessageById(messageId) ?: return@launch

@@ -27,4 +27,7 @@ class MessageRepository @Inject constructor(
 
     suspend fun countUnread(channelId: String, afterTimestamp: Long): Int =
         messageDao.countUnread(channelId, afterTimestamp)
+
+    suspend fun searchMessages(channelId: String, query: String): List<MessageEntity> =
+        messageDao.searchMessages(channelId, query)
 }

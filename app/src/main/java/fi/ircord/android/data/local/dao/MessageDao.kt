@@ -30,4 +30,7 @@ interface MessageDao {
 
     @Query("SELECT COUNT(*) FROM messages WHERE channel_id = :channelId AND timestamp > :afterTimestamp")
     suspend fun countUnread(channelId: String, afterTimestamp: Long): Int
+
+    @Query("SELECT * FROM messages WHERE channel_id = :channelId AND content LIKE '%' || :query || '%' ORDER BY timestamp DESC LIMIT 50")
+    suspend fun searchMessages(channelId: String, query: String): List<MessageEntity>
 }

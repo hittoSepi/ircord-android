@@ -11,6 +11,8 @@ data class PeerIdentityEntity(
     @ColumnInfo(name = "trust_status") val trustStatus: String = "unverified",
     @ColumnInfo(name = "safety_number") val safetyNumber: String? = null,
     @ColumnInfo(name = "public_key") val publicKey: String? = null,  // Base64 encoded for native store
+    @ColumnInfo(name = "presence_status") val presenceStatus: String = "offline",  // online, away, offline
+    @ColumnInfo(name = "presence_updated_at") val presenceUpdatedAt: Long = 0,  // timestamp of last update
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

@@ -24,4 +24,7 @@ interface ChannelDao {
 
     @Query("UPDATE channels SET last_read_ts = :ts WHERE channel_id = :channelId")
     suspend fun updateLastRead(channelId: String, ts: Long)
+
+    @Query("UPDATE channels SET topic = :topic WHERE channel_id = :channelId")
+    suspend fun updateTopic(channelId: String, topic: String?)
 }

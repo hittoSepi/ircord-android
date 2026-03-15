@@ -15,7 +15,15 @@ class KeyRepository @Inject constructor(
 
     fun getAllPeers(): Flow<List<PeerIdentityEntity>> = peerIdentityDao.getAll()
 
+    fun getOnlineUsers(): Flow<List<PeerIdentityEntity>> = peerIdentityDao.getOnlineUsers()
+
     suspend fun insertPeer(identity: PeerIdentityEntity) = peerIdentityDao.insert(identity)
 
     suspend fun markVerified(userId: String) = peerIdentityDao.updateTrust(userId, "verified")
+
+    suspend fun updatePresence(userId: String, status: String) =
+        peerIdentityDao.updatePresence(userId, status.lowercase())
+
+    suspend fun getPresenceStatus(userId: String): String? =
+        peerIdentityDao.getPresenceStatus(userId)
 }

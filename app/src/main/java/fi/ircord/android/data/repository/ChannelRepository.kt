@@ -18,4 +18,7 @@ class ChannelRepository @Inject constructor(
 
     suspend fun updateLastRead(channelId: String, ts: Long) =
         channelDao.updateLastRead(channelId, ts)
+
+    suspend fun updateTopic(channelId: String, topic: String?) =
+        channelDao.updateTopic(channelId, topic)
 }

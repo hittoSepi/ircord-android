@@ -72,7 +72,7 @@ fun MessageBubble(
                     modifier = Modifier.width(IrcordSpacing.messageNickWidth),
                 )
                 Spacer(Modifier.width(IrcordSpacing.sm))
-                Text(
+                MarkdownText(
                     text = message.content,
                     style = MaterialTheme.typography.bodyLarge,
                     color = if (isFailed) MaterialTheme.colorScheme.error

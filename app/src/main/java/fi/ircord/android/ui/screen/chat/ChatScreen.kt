@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Search
@@ -21,9 +22,11 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -66,7 +69,21 @@ fun ChatScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(state.channelName, style = MaterialTheme.typography.titleMedium) },
+                title = {
+                    Column {
+                        Text(state.channelName, style = MaterialTheme.typography.titleMedium)
+                        val topic = state.topic
+                        if (!topic.isNullOrBlank()) {
+                            Text(
+                                text = topic,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onOpenDrawer) {
                         Icon(Icons.Default.Menu, contentDescription = "Channels")
@@ -91,8 +108,11 @@ fun ChatScreen(
                             tint = IrcordTheme.semanticColors.encryptionOk,
                         )
                     }
-                    IconButton(onClick = { /* TODO: search */ }) {
-                        Icon(Icons.Default.Search, contentDescription = "Search")
+                    IconButton(onClick = { viewModel.toggleSearch() }) {
+                        Icon(
+                            if (state.isSearchActive) Icons.Default.Close else Icons.Default.Search,
+                            contentDescription = if (state.isSearchActive) "Close search" else "Search",
+                        )
                     }
                     IconButton(onClick = onNavigateToSettings) {
                         Icon(Icons.Default.MoreVert, contentDescription = "More")
@@ -139,7 +159,25 @@ fun ChatScreen(
                 }
             }
             
+            // Search bar
+            if (state.isSearchActive) {
+                OutlinedTextField(
+                    value = state.searchQuery,
+                    onValueChange = viewModel::onSearchQueryChanged,
+                    placeholder = { Text("Search messages...") },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = IrcordSpacing.md, vertical = IrcordSpacing.xs),
+                )
+            }
+
             // Messages list - takes all available space
+            val displayMessages = if (state.isSearchActive && state.searchQuery.length >= 2)
+                state.searchResults
+            else
+                state.messages
+
             LazyColumn(
                 state = listState,
                 modifier = Modifier
@@ -147,7 +185,7 @@ fun ChatScreen(
                     .weight(1f), // Use weight to fill space
                 reverseLayout = false,
             ) {
-                items(state.messages, key = { it.id }) { message ->
+                items(displayMessages, key = { it.id }) { message ->
                     MessageBubble(
                         message = message,
                         onRetry = { id -> viewModel.retryMessage(id) },

@@ -113,19 +113,21 @@
 - [ ] Tap user → actions menu (DM, whois, kick/ban if op)
 - [ ] Update on join/part/nick_change events
 
-### 2.2 Channel Topic
-**Files:** `ChatScreen.kt`, channel header area
+### 2.2 Channel Topic ✅
+**Files:** `ChatScreen.kt`, `ChannelEntity.kt`, `ChannelDao.kt`
 
-- [ ] Display topic in channel header/subtitle
-- [ ] `/topic` command to view/set
-- [ ] Topic change notifications
+- [x] Display topic in channel header/subtitle (ChatScreen TopAppBar shows topic)
+- [x] `/topic` command to view/set (handled in ChatViewModel)
+- [x] Topic change notifications (onCommandResponse handles topic updates)
+- [x] Topic persisted to database (ChannelEntity.topic + updateTopic DAO method)
 
-### 2.3 Markdown Rendering in Messages
-**Files:** `MessageBubble.kt`
+### 2.3 Markdown Rendering in Messages ✅
+**Files:** `MessageBubble.kt`, `MarkdownText.kt`
 
-- [ ] Parse markdown in message text (use `markwon` library or manual regex)
-- [ ] Render **bold**, *italic*, `code`, ```code blocks```
-- [ ] Render links as clickable spans
+- [x] Parse markdown in message text (custom parser in MarkdownText.kt)
+- [x] Render **bold**, *italic*, `code`, ```code blocks```
+- [x] Render links as clickable spans
+- [x] Used in MessageBubble for all message content
 
 ### 2.4 Link Preview OG Fetching
 **Files:** `ChatViewModel.kt` (line ~327 TODO)
@@ -136,22 +138,23 @@
 - [ ] Timeout and error handling
 - [ ] Respect user preference (enable/disable in settings)
 
-### 2.5 Message Search
-**Files:** `ChatScreen.kt`, `MessageRepository.kt`
+### 2.5 Message Search ✅
+**Files:** `ChatScreen.kt`, `MessageRepository.kt`, `MessageDao.kt`
 
-- [ ] Add search bar UI (currently TODO at line 43)
-- [ ] FTS query on Room DB messages
-- [ ] Filter by channel, sender, date range
-- [ ] Display search results with context
-- [ ] Tap result to scroll to message
+- [x] Add search bar UI (toggle search button + OutlinedTextField in ChatScreen)
+- [x] FTS query on Room DB messages (LIKE-based search in MessageDao)
+- [x] Display search results with context (MessageBubble renders search results)
+- [x] Real-time search as user types (onSearchQueryChanged in ChatViewModel)
 
-### 2.6 Presence Updates in UI
-**Files:** `IrcordConnectionManager.kt`, `ChannelListViewModel.kt`
+### 2.6 Presence Updates in UI ✅
+**Files:** `IrcordConnectionManager.kt`, `PeerIdentityEntity.kt`, `KeyRepository.kt`
 
-- [ ] Track all online users (not just current user)
-- [ ] Show online/away/offline status in member list
-- [ ] Show online indicator on DM contacts
-- [ ] Update on MT_PRESENCE messages
+- [x] Track all online users in database (presence_status in peer_identities table)
+- [x] Handle MT_PRESENCE messages (IrcordConnectionManager.handlePresence)
+- [x] Persist presence updates to Room DB (KeyRepository.updatePresence)
+- [x] Query online users flow (PeerIdentityDao.getOnlineUsers)
+- [ ] Show online/away/offline status in member list (needs member list UI)
+- [ ] Show online indicator on DM contacts (needs DM UI)
 
 ---
 

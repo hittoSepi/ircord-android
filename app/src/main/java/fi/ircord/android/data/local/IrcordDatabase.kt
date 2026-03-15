@@ -15,7 +15,7 @@ import fi.ircord.android.data.local.entity.PeerIdentityEntity
         ChannelEntity::class,
         PeerIdentityEntity::class,
     ],
-    version = 2,
+    version = 4,
     exportSchema = true,
 )
 abstract class IrcordDatabase : RoomDatabase() {
