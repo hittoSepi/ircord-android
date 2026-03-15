@@ -4,7 +4,6 @@ import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.flow.onEach
 import dagger.hilt.android.lifecycle.HiltViewModel
 import fi.ircord.android.data.local.entity.MessageEntity
 import fi.ircord.android.data.local.preferences.UserPreferences
@@ -200,12 +199,13 @@ class ChatViewModel @Inject constructor(
     }
     
     private fun handleCommand(input: String) {
-        val parts = input.substring(1).split(" ")
+        val parts = input.substring(1).split(" ", limit = 2)
         if (parts.isEmpty()) return
-        
+
         val command = parts[0].lowercase()
-        val args = parts.drop(1)
-        
+        val rawArgs = if (parts.size > 1) parts[1] else ""
+        val args = rawArgs.split(" ").filter { it.isNotEmpty() }
+
         when (command) {
             "join" -> {
                 if (args.isNotEmpty()) {
@@ -232,30 +232,94 @@ class ChatViewModel @Inject constructor(
                 }
             }
             "me", "action" -> {
-                if (args.isNotEmpty()) {
-                    val actionText = args.joinToString(" ")
-                    connectionManager.sendCommand("me", actionText)
+                if (rawArgs.isNotEmpty()) {
+                    connectionManager.sendCommand("me", rawArgs)
                     _uiState.update { it.copy(inputText = "") }
                 }
             }
+            "msg", "query" -> {
+                if (args.size >= 2) {
+                    val recipient = args[0]
+                    val message = rawArgs.substringAfter("$recipient ")
+                    connectionManager.sendChat(recipient, message)
+                    _uiState.update { it.copy(inputText = "") }
+                }
+            }
+            "whois" -> {
+                if (args.isNotEmpty()) {
+                    connectionManager.sendCommand("whois", args[0])
+                    _uiState.update { it.copy(inputText = "") }
+                }
+            }
+            "topic" -> {
+                if (rawArgs.isNotEmpty()) {
+                    connectionManager.sendCommand("topic", "#$channelId", rawArgs)
+                } else {
+                    connectionManager.sendCommand("topic", "#$channelId")
+                }
+                _uiState.update { it.copy(inputText = "") }
+            }
+            "names" -> {
+                connectionManager.sendCommand("names")
+                _uiState.update { it.copy(inputText = "") }
+            }
+            "kick" -> {
+                if (args.isNotEmpty()) {
+                    val user = args[0]
+                    val reason = if (args.size > 1) rawArgs.substringAfter("$user ") else ""
+                    connectionManager.sendCommand("kick", "#$channelId", user, reason)
+                    _uiState.update { it.copy(inputText = "") }
+                }
+            }
+            "ban" -> {
+                if (args.isNotEmpty()) {
+                    val user = args[0]
+                    val reason = if (args.size > 1) rawArgs.substringAfter("$user ") else ""
+                    connectionManager.sendCommand("ban", "#$channelId", user, reason)
+                    _uiState.update { it.copy(inputText = "") }
+                }
+            }
+            "invite" -> {
+                if (args.isNotEmpty()) {
+                    connectionManager.sendCommand("invite", "#$channelId", args[0])
+                    _uiState.update { it.copy(inputText = "") }
+                }
+            }
+            "password", "pass" -> {
+                if (args.isNotEmpty()) {
+                    connectionManager.sendCommand("password", *args.toTypedArray())
+                    _uiState.update { it.copy(inputText = "") }
+                }
+            }
+            "quit" -> {
+                val reason = rawArgs.ifEmpty { "Leaving" }
+                connectionManager.sendCommand("quit", reason)
+                _uiState.update { it.copy(inputText = "") }
+            }
             else -> {
-                // Unknown command, send as chat for now
-                connectionManager.sendChat("#$channelId", input)
+                // Forward unknown commands to server
+                connectionManager.sendCommand(command, *args.toTypedArray())
+                _uiState.update { it.copy(inputText = "") }
             }
         }
     }
     
     fun retryMessage(messageId: Long) {
         viewModelScope.launch {
+            val msg = messageRepository.getMessageById(messageId) ?: return@launch
             messageRepository.updateSendStatus(messageId, SendStatus.SENDING.name.lowercase())
-            // TODO: retrieve message content and re-send via connectionManager
-            messageRepository.updateSendStatus(messageId, SendStatus.FAILED.name.lowercase())
+            try {
+                connectionManager.sendChat("#${msg.channelId}", msg.content)
+                messageRepository.updateSendStatus(messageId, SendStatus.SENT.name.lowercase())
+            } catch (e: Exception) {
+                messageRepository.updateSendStatus(messageId, SendStatus.FAILED.name.lowercase())
+            }
         }
     }
-    
+
     fun deleteMessage(messageId: Long) {
         viewModelScope.launch {
-            // TODO: Add delete method to MessageRepository if needed
+            messageRepository.deleteById(messageId)
         }
     }
     

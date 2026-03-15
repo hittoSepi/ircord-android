@@ -150,6 +150,8 @@ fun ChatScreen(
                 items(state.messages, key = { it.id }) { message ->
                     MessageBubble(
                         message = message,
+                        onRetry = { id -> viewModel.retryMessage(id) },
+                        onDelete = { id -> viewModel.deleteMessage(id) },
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(

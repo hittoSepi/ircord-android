@@ -52,6 +52,18 @@ class IrcordConnectionManager @Inject constructor(
     // Callback for command responses (e.g., channel join)
     var onCommandResponse: ((success: Boolean, message: String, command: String) -> Unit)? = null
 
+    // Callback for nick changes
+    var onNickChange: ((oldNick: String, newNick: String) -> Unit)? = null
+
+    // Callback for server errors (shown as snackbar/toast)
+    var onServerError: ((code: Int, message: String) -> Unit)? = null
+
+    // Callback for MOTD
+    var onMotd: ((lines: List<String>) -> Unit)? = null
+
+    // Callback for user info (WHOIS response)
+    var onUserInfo: ((userId: String, nickname: String, isOnline: Boolean, channels: List<String>, fingerprint: String) -> Unit)? = null
+
     /**
      * Connect to the server, authenticate, and start the message loop.
      * Call once from ChatViewModel or a Service.
@@ -296,6 +308,9 @@ class IrcordConnectionManager @Inject constructor(
             MessageType.MT_PING           -> handlePing(env)
             MessageType.MT_COMMAND_RESPONSE -> handleCommandResponse(payload)
             MessageType.MT_ERROR          -> handleError(payload)
+            MessageType.MT_NICK_CHANGE    -> handleNickChange(payload)
+            MessageType.MT_MOTD           -> handleMotd(payload)
+            MessageType.MT_USER_INFO      -> handleUserInfo(payload)
             else -> Timber.d("Unhandled message type: ${env.type}")
         }
     }
@@ -453,8 +468,45 @@ class IrcordConnectionManager @Inject constructor(
         try {
             val err = Error.parseFrom(payload)
             Timber.e("Server error: [${err.code}] ${err.message}")
+            onServerError?.invoke(err.code, err.message)
         } catch (e: Exception) {
             Timber.e(e, "Error parsing error message")
+        }
+    }
+
+    private fun handleNickChange(payload: ByteArray) {
+        try {
+            val nc = NickChange.parseFrom(payload)
+            Timber.i("Nick change: ${nc.oldNick} -> ${nc.newNick}")
+            onNickChange?.invoke(nc.oldNick, nc.newNick)
+        } catch (e: Exception) {
+            Timber.e(e, "Error parsing nick change")
+        }
+    }
+
+    private fun handleMotd(payload: ByteArray) {
+        try {
+            val motd = MotdMessage.parseFrom(payload)
+            Timber.i("MOTD received (${motd.linesList.size} lines)")
+            onMotd?.invoke(motd.linesList)
+        } catch (e: Exception) {
+            Timber.e(e, "Error parsing MOTD")
+        }
+    }
+
+    private fun handleUserInfo(payload: ByteArray) {
+        try {
+            val info = UserInfo.parseFrom(payload)
+            Timber.d("User info: ${info.userId} (${info.nickname}), online=${info.isOnline}")
+            onUserInfo?.invoke(
+                info.userId,
+                info.nickname,
+                info.isOnline,
+                info.channelsList,
+                info.identityFingerprint
+            )
+        } catch (e: Exception) {
+            Timber.e(e, "Error parsing user info")
         }
     }
     

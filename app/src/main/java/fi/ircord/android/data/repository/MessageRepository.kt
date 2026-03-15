@@ -18,4 +18,13 @@ class MessageRepository @Inject constructor(
 
     suspend fun updateSendStatus(id: Long, status: String) =
         messageDao.updateSendStatus(id, status)
+
+    suspend fun getMessageById(id: Long): MessageEntity? =
+        messageDao.getMessageById(id)
+
+    suspend fun deleteById(id: Long) =
+        messageDao.deleteById(id)
+
+    suspend fun countUnread(channelId: String, afterTimestamp: Long): Int =
+        messageDao.countUnread(channelId, afterTimestamp)
 }

@@ -10,6 +10,7 @@ import fi.ircord.android.data.remote.ConnectionState
 import fi.ircord.android.data.remote.IrcordConnectionManager
 import fi.ircord.android.data.remote.IrcordSocket
 import fi.ircord.android.data.repository.ChannelRepository
+import fi.ircord.android.data.repository.MessageRepository
 import fi.ircord.android.data.repository.VoiceRepository
 import fi.ircord.android.domain.model.Channel
 import fi.ircord.android.domain.model.ChannelType
@@ -51,6 +52,7 @@ data class VoiceChannelInfo(
 @HiltViewModel
 class ChannelListViewModel @Inject constructor(
     private val channelRepository: ChannelRepository,
+    private val messageRepository: MessageRepository,
     private val voiceRepository: VoiceRepository,
     private val userPreferences: UserPreferences,
     private val ircordSocket: IrcordSocket,
@@ -110,10 +112,13 @@ class ChannelListViewModel @Inject constructor(
                     PresenceStatus.ONLINE else PresenceStatus.OFFLINE
             )
             
-            // Split channels into text and voice
+            // Split channels into text and voice, calculate unread counts
             val textChannels = channels
                 .filter { !it.channelId.endsWith("-voice") }
-                .map { it.toDomainModel() }
+                .map { entity ->
+                    val unread = messageRepository.countUnread(entity.channelId, entity.lastReadTs)
+                    entity.toDomainModel(unread)
+                }
             
             // Create voice channels from voice state and known channels
             val voiceChannels = if (voiceState.isInVoice) {
@@ -311,12 +316,12 @@ class ChannelListViewModel @Inject constructor(
         }
     }
     
-    private fun ChannelEntity.toDomainModel(): Channel {
+    private fun ChannelEntity.toDomainModel(unreadCount: Int = 0): Channel {
         return Channel(
             channelId = channelId,
             displayName = displayName ?: "#$channelId",
             type = ChannelType.TEXT,
-            unreadCount = 0, // TODO: Calculate from lastReadTs
+            unreadCount = unreadCount,
         )
     }
 }

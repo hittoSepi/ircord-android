@@ -39,6 +39,9 @@ enum MessageType {
   // Server management
   MT_INVITE           = 50;  // Invite code for server registration
 
+  // Server messages
+  MT_MOTD             = 75;   // Server → Client: Message of the Day
+
   // Push notifications
   MT_FCM_TOKEN        = 70;   // Client → Server: register FCM token
   MT_FCM_UNREGISTER   = 71;   // Client → Server: unregister FCM token
@@ -284,4 +287,9 @@ message FileMetadata {
   int64 expires_at = 9;        // Expiration timestamp
   bytes file_checksum = 10;    // SHA-256 of file
   string storage_path = 11;    // Server storage location
+}
+
+// MOTD (Message of the Day) message
+message MotdMessage {
+  repeated string lines = 1;   // MOTD lines (split on newlines)
 }

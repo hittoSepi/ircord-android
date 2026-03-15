@@ -21,4 +21,13 @@ interface MessageDao {
 
     @Query("DELETE FROM messages WHERE channel_id = :channelId")
     suspend fun deleteByChannel(channelId: String)
+
+    @Query("SELECT * FROM messages WHERE id = :id LIMIT 1")
+    suspend fun getMessageById(id: Long): MessageEntity?
+
+    @Query("DELETE FROM messages WHERE id = :id")
+    suspend fun deleteById(id: Long)
+
+    @Query("SELECT COUNT(*) FROM messages WHERE channel_id = :channelId AND timestamp > :afterTimestamp")
+    suspend fun countUnread(channelId: String, afterTimestamp: Long): Int
 }
