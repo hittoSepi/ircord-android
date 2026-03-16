@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Circle
@@ -33,12 +34,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
+import fi.ircord.android.data.local.entity.ChannelMemberEntity
 import fi.ircord.android.ui.components.VoicePill
+import fi.ircord.android.ui.screen.chat.components.MemberListDrawer
 import fi.ircord.android.ui.screen.chat.components.MessageBubble
 import fi.ircord.android.ui.screen.chat.components.MessageInput
+import fi.ircord.android.ui.screen.chat.components.UserActionsMenu
 import fi.ircord.android.ui.security.SecureScreenEffect
 import fi.ircord.android.ui.theme.IrcordSpacing
 import fi.ircord.android.ui.theme.IrcordTheme
@@ -54,6 +61,10 @@ fun ChatScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val listState = rememberLazyListState()
+    
+    // Member list state
+    var showMemberList by remember { mutableStateOf(false) }
+    var selectedMember by remember { mutableStateOf<ChannelMemberEntity?>(null) }
     
     // Apply screen security when screen capture is disabled
     SecureScreenEffect(enabled = !state.screenCaptureEnabled)
@@ -107,6 +118,9 @@ fun ChatScreen(
                             contentDescription = "Encrypted",
                             tint = IrcordTheme.semanticColors.encryptionOk,
                         )
+                    }
+                    IconButton(onClick = { showMemberList = true }) {
+                        Icon(Icons.Default.People, contentDescription = "Members")
                     }
                     IconButton(onClick = { viewModel.toggleSearch() }) {
                         Icon(
@@ -221,6 +235,38 @@ fun ChatScreen(
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
+        }
+
+        // Member list drawer
+        if (showMemberList) {
+            MemberListDrawer(
+                channelId = channelId,
+                onDismiss = { showMemberList = false },
+                onUserClick = { member ->
+                    selectedMember = member
+                },
+            )
+        }
+
+        // User actions menu
+        selectedMember?.let { member ->
+            UserActionsMenu(
+                member = member,
+                currentUserRole = state.currentUserRole,
+                onDismiss = { selectedMember = null },
+                onSendDM = { nickname ->
+                    viewModel.sendCommand("query", nickname)
+                },
+                onWhois = { nickname ->
+                    viewModel.sendCommand("whois", nickname)
+                },
+                onKick = { nickname ->
+                    viewModel.sendCommand("kick", nickname)
+                },
+                onBan = { nickname ->
+                    viewModel.sendCommand("ban", nickname)
+                },
+            )
         }
     }
 }

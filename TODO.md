@@ -103,15 +103,16 @@
 
 ## Tier 2: Important (Feature Parity)
 
-### 2.1 Channel Member List
-**Files:** New `MemberListScreen.kt`, `ChannelViewModel.kt`
+### 2.1 Channel Member List ✅
+**Files:** `MemberListDrawer.kt`, `UserActionsMenu.kt`, `ChannelMemberEntity.kt`
 
-- [ ] Send `/names` on channel join
-- [ ] Parse COMMAND_RESPONSE with member list (roles: @op, +voice, regular)
-- [ ] Member list drawer/sheet in chat screen
-- [ ] Show user roles with icons
-- [ ] Tap user → actions menu (DM, whois, kick/ban if op)
-- [ ] Update on join/part/nick_change events
+- [x] Send `/names` on channel join
+- [x] Parse COMMAND_RESPONSE with member list (roles: @op, +voice, regular)
+- [x] Member list drawer/sheet in chat screen
+- [x] Show user roles with icons
+- [x] Show online/offline status
+- [x] Tap user → actions menu (DM, whois, kick/ban if op)
+- [x] Update on join/part/nick_change events
 
 ### 2.2 Channel Topic ✅
 **Files:** `ChatScreen.kt`, `ChannelEntity.kt`, `ChannelDao.kt`

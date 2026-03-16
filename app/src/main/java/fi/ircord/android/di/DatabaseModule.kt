@@ -9,6 +9,7 @@ import dagger.hilt.components.SingletonComponent
 import fi.ircord.android.data.local.EncryptedDatabaseFactory
 import fi.ircord.android.data.local.IrcordDatabase
 import fi.ircord.android.data.local.dao.ChannelDao
+import fi.ircord.android.data.local.dao.ChannelMemberDao
 import fi.ircord.android.data.local.dao.MessageDao
 import fi.ircord.android.data.local.dao.PeerIdentityDao
 import fi.ircord.android.crypto.NativeStore
@@ -43,6 +44,9 @@ object DatabaseModule {
 
     @Provides
     fun providePeerIdentityDao(db: IrcordDatabase): PeerIdentityDao = db.peerIdentityDao()
+
+    @Provides
+    fun provideChannelMemberDao(db: IrcordDatabase): ChannelMemberDao = db.channelMemberDao()
 
     @Provides
     @Singleton

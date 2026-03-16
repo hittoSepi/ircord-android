@@ -4,6 +4,7 @@ import com.google.protobuf.ByteString
 import fi.ircord.android.data.local.entity.MessageEntity
 import fi.ircord.android.data.local.preferences.UserPreferences
 import fi.ircord.android.data.remote.ConnectionState
+import fi.ircord.android.data.repository.ChannelMemberRepository
 import fi.ircord.android.data.repository.KeyRepository
 import fi.ircord.android.data.repository.MessageRepository
 import fi.ircord.android.crypto.NativeCrypto
@@ -37,6 +38,7 @@ class IrcordConnectionManager @Inject constructor(
     private val userPreferences: UserPreferences,
     private val messageRepository: MessageRepository,
     private val keyRepository: KeyRepository,
+    private val channelMemberRepository: ChannelMemberRepository,
     private val nativeStore: NativeStore,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -68,6 +70,10 @@ class IrcordConnectionManager @Inject constructor(
 
     // Callback for presence updates
     var onPresenceUpdate: ((userId: String, status: String) -> Unit)? = null
+
+    // Callback for join/part events
+    var onUserJoined: ((channelId: String, userId: String, nickname: String) -> Unit)? = null
+    var onUserLeft: ((channelId: String, userId: String, nickname: String) -> Unit)? = null
 
     // Tracked online users
     private val _onlineUsers = MutableStateFlow<Set<String>>(emptySet())

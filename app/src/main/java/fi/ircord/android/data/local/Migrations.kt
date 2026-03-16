@@ -41,11 +41,33 @@ object Migrations {
     }
 
     /**
+     * Migration from version 4 to 5:
+     * - Adds channel_members table for tracking channel membership
+     */
+    val MIGRATION_4_5 = object : Migration(4, 5) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS channel_members (
+                    channel_id TEXT NOT NULL,
+                    user_id TEXT NOT NULL,
+                    nickname TEXT NOT NULL,
+                    role TEXT NOT NULL DEFAULT 'regular',
+                    joined_at INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY(channel_id, user_id)
+                )
+            """)
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_channel_members_channel_id ON channel_members(channel_id)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_channel_members_user_id ON channel_members(user_id)")
+        }
+    }
+
+    /**
      * All migrations in order.
      */
     val ALL_MIGRATIONS: Array<Migration> = arrayOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
         MIGRATION_3_4,
+        MIGRATION_4_5,
     )
 }

@@ -5,12 +5,14 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import fi.ircord.android.data.local.entity.ChannelRole
 import fi.ircord.android.data.local.entity.MessageEntity
 import fi.ircord.android.data.local.preferences.UserPreferences
 import fi.ircord.android.data.remote.AuthState
 import fi.ircord.android.data.remote.ConnectionState
 import fi.ircord.android.data.remote.IrcordConnectionManager
 import fi.ircord.android.data.remote.IrcordSocket
+import fi.ircord.android.data.repository.ChannelMemberRepository
 import fi.ircord.android.data.repository.ChannelRepository
 import fi.ircord.android.data.repository.FileRepository
 import fi.ircord.android.data.repository.MessageRepository
@@ -38,6 +40,7 @@ data class ChatUiState(
     val isEncrypted: Boolean = true,
     val isConnected: Boolean = false,
     val currentUserId: String = "",
+    val currentUserRole: ChannelRole = ChannelRole.REGULAR,
     val messages: List<Message> = emptyList(),
     val inputText: String = "",
     val voiceActive: Boolean = false,
@@ -57,6 +60,7 @@ class ChatViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val messageRepository: MessageRepository,
     private val channelRepository: ChannelRepository,
+    private val channelMemberRepository: ChannelMemberRepository,
     private val voiceRepository: VoiceRepository,
     private val fileRepository: FileRepository,
     private val userPreferences: UserPreferences,
@@ -96,13 +100,39 @@ class ChatViewModel @Inject constructor(
 
         // Listen for command responses (topic, names, etc.)
         connectionManager.onCommandResponse = { success, message, command ->
-            if (success && command == "topic") {
-                // Message format: "Topic for #channel: the topic text"
-                val topicMatch = Regex("Topic for #\\S+: (.+)").find(message)
-                val topic = topicMatch?.groupValues?.get(1) ?: message
-                _uiState.update { it.copy(topic = topic) }
-                viewModelScope.launch {
-                    channelRepository.updateTopic(channelId, topic)
+            if (success) {
+                when (command) {
+                    "topic" -> {
+                        // Message format: "Topic for #channel: the topic text"
+                        val topicMatch = Regex("Topic for #\\S+: (.+)").find(message)
+                        val topic = topicMatch?.groupValues?.get(1) ?: message
+                        _uiState.update { it.copy(topic = topic) }
+                        viewModelScope.launch {
+                            channelRepository.updateTopic(channelId, topic)
+                        }
+                    }
+                    "names" -> {
+                        // Parse member list from names response
+                        viewModelScope.launch {
+                            channelMemberRepository.syncMemberList(channelId, message)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Listen for join/part events
+        connectionManager.onUserJoined = { ch, userId, nickname ->
+            viewModelScope.launch {
+                if (ch.removePrefix("#") == channelId) {
+                    channelMemberRepository.addMember(channelId, userId, nickname)
+                }
+            }
+        }
+        connectionManager.onUserLeft = { ch, userId, nickname ->
+            viewModelScope.launch {
+                if (ch.removePrefix("#") == channelId) {
+                    channelMemberRepository.removeMember(channelId, userId)
                 }
             }
         }
@@ -327,6 +357,13 @@ class ChatViewModel @Inject constructor(
                 _uiState.update { it.copy(inputText = "") }
             }
         }
+    }
+
+    /**
+     * Send a command to the server from UI actions (e.g., member list actions)
+     */
+    fun sendCommand(command: String, vararg args: String) {
+        connectionManager.sendCommand(command, *args)
     }
     
     // ============================================================================

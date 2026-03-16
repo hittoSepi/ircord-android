@@ -11,6 +11,7 @@ import fi.ircord.android.crypto.NativeStore
 import fi.ircord.android.data.local.preferences.UserPreferences
 import fi.ircord.android.data.remote.IrcordConnectionManager
 import fi.ircord.android.data.remote.IrcordSocket
+import fi.ircord.android.data.repository.ChannelMemberRepository
 import fi.ircord.android.data.repository.KeyRepository
 import fi.ircord.android.data.repository.MessageRepository
 import javax.inject.Singleton
@@ -35,7 +36,8 @@ object AppModule {
         userPreferences: UserPreferences,
         messageRepository: MessageRepository,
         keyRepository: KeyRepository,
+        channelMemberRepository: ChannelMemberRepository,
         nativeStore: NativeStore,
     ): IrcordConnectionManager =
-        IrcordConnectionManager(socket, userPreferences, messageRepository, keyRepository, nativeStore)
+        IrcordConnectionManager(socket, userPreferences, messageRepository, keyRepository, channelMemberRepository, nativeStore)
 }
