@@ -4,10 +4,12 @@ import androidx.room.Database
 import androidx.room.RoomDatabase
 import fi.ircord.android.data.local.dao.ChannelDao
 import fi.ircord.android.data.local.dao.ChannelMemberDao
+import fi.ircord.android.data.local.dao.LinkPreviewDao
 import fi.ircord.android.data.local.dao.MessageDao
 import fi.ircord.android.data.local.dao.PeerIdentityDao
 import fi.ircord.android.data.local.entity.ChannelEntity
 import fi.ircord.android.data.local.entity.ChannelMemberEntity
+import fi.ircord.android.data.local.entity.LinkPreviewEntity
 import fi.ircord.android.data.local.entity.MessageEntity
 import fi.ircord.android.data.local.entity.PeerIdentityEntity
 
@@ -17,8 +19,9 @@ import fi.ircord.android.data.local.entity.PeerIdentityEntity
         ChannelEntity::class,
         PeerIdentityEntity::class,
         ChannelMemberEntity::class,
+        LinkPreviewEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
 )
 abstract class IrcordDatabase : RoomDatabase() {
@@ -26,4 +29,5 @@ abstract class IrcordDatabase : RoomDatabase() {
     abstract fun channelDao(): ChannelDao
     abstract fun peerIdentityDao(): PeerIdentityDao
     abstract fun channelMemberDao(): ChannelMemberDao
+    abstract fun linkPreviewDao(): LinkPreviewDao
 }

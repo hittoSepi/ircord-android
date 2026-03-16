@@ -47,6 +47,7 @@ class UserPreferences @Inject constructor(
     val useTls: Flow<Boolean> = dataStore.data.map { it[KEY_USE_TLS] ?: (it[KEY_PORT] != 6667) }
     val rememberMe: Flow<Boolean> = dataStore.data.map { it[KEY_REMEMBER_ME] ?: false }
     val fontScale: Flow<Float> = dataStore.data.map { it[KEY_FONT_SCALE] ?: FONT_SCALE_NORMAL }
+    val linkPreviewsEnabled: Flow<Boolean> = dataStore.data.map { it[KEY_LINK_PREVIEWS] ?: true }
 
     suspend fun saveServerSettings(address: String, port: Int = DEFAULT_PORT, tls: Boolean? = null) {
         dataStore.edit { prefs ->
@@ -134,6 +135,7 @@ class UserPreferences @Inject constructor(
     suspend fun setVoiceBitrate(bitrate: String) = dataStore.edit { it[KEY_VOICE_BITRATE] = bitrate }
     suspend fun setScreenCapture(enabled: Boolean) = dataStore.edit { it[KEY_SCREEN_CAPTURE] = enabled }
     suspend fun setFontScale(scale: Float) = dataStore.edit { it[KEY_FONT_SCALE] = scale }
+    suspend fun setLinkPreviewsEnabled(enabled: Boolean) = dataStore.edit { it[KEY_LINK_PREVIEWS] = enabled }
 
     companion object {
         const val DEFAULT_PORT = 6697
@@ -179,5 +181,6 @@ class UserPreferences @Inject constructor(
         private val KEY_USE_TLS = booleanPreferencesKey("use_tls")
         private val KEY_REMEMBER_ME = booleanPreferencesKey("remember_me")
         private val KEY_FONT_SCALE = floatPreferencesKey("font_scale")
+        private val KEY_LINK_PREVIEWS = booleanPreferencesKey("link_previews")
     }
 }

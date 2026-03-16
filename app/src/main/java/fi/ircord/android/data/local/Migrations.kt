@@ -62,6 +62,28 @@ object Migrations {
     }
 
     /**
+     * Migration from version 5 to 6:
+     * - Adds link_previews table for caching Open Graph metadata
+     */
+    val MIGRATION_5_6 = object : Migration(5, 6) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS link_previews (
+                    url TEXT PRIMARY KEY NOT NULL,
+                    title TEXT,
+                    description TEXT,
+                    image_url TEXT,
+                    site_name TEXT,
+                    cached_at INTEGER NOT NULL DEFAULT 0,
+                    fetch_status TEXT NOT NULL DEFAULT 'pending'
+                )
+            """)
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_link_previews_url ON link_previews(url)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_link_previews_cached_at ON link_previews(cached_at)")
+        }
+    }
+
+    /**
      * All migrations in order.
      */
     val ALL_MIGRATIONS: Array<Migration> = arrayOf(
@@ -69,5 +91,6 @@ object Migrations {
         MIGRATION_2_3,
         MIGRATION_3_4,
         MIGRATION_4_5,
+        MIGRATION_5_6,
     )
 }

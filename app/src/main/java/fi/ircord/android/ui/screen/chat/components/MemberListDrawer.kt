@@ -128,7 +128,7 @@ private fun MemberItem(
                     modifier = Modifier.size(20.dp)
                 )
                 ChannelRole.VOICE -> Icon(
-                    imageVector = Icons.Default.Chat,
+                    imageVector = Icons.AutoMirrored.Filled.Chat,
                     contentDescription = "Voiced",
                     tint = roleColor,
                     modifier = Modifier.size(20.dp)

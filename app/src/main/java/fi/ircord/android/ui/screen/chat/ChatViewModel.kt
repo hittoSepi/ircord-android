@@ -15,6 +15,7 @@ import fi.ircord.android.data.remote.IrcordSocket
 import fi.ircord.android.data.repository.ChannelMemberRepository
 import fi.ircord.android.data.repository.ChannelRepository
 import fi.ircord.android.data.repository.FileRepository
+import fi.ircord.android.data.repository.LinkPreviewRepository
 import fi.ircord.android.data.repository.MessageRepository
 import fi.ircord.android.data.repository.VoiceRepository
 import fi.ircord.android.domain.model.FileTransfer
@@ -53,6 +54,8 @@ data class ChatUiState(
     val isSearchActive: Boolean = false,
     val searchQuery: String = "",
     val searchResults: List<Message> = emptyList(),
+    val linkPreviews: Map<String, LinkPreview> = emptyMap(),  // URL -> Preview cache
+    val linkPreviewsEnabled: Boolean = true,
 )
 
 @HiltViewModel
@@ -63,6 +66,7 @@ class ChatViewModel @Inject constructor(
     private val channelMemberRepository: ChannelMemberRepository,
     private val voiceRepository: VoiceRepository,
     private val fileRepository: FileRepository,
+    private val linkPreviewRepository: LinkPreviewRepository,
     private val userPreferences: UserPreferences,
     private val ircordSocket: IrcordSocket,
     private val connectionManager: IrcordConnectionManager,
@@ -142,6 +146,11 @@ class ChatViewModel @Inject constructor(
             _uiState.update { it.copy(screenCaptureEnabled = enabled) }
         }.launchIn(viewModelScope)
 
+        // Observe link preview setting
+        userPreferences.linkPreviewsEnabled.onEach { enabled ->
+            _uiState.update { it.copy(linkPreviewsEnabled = enabled) }
+        }.launchIn(viewModelScope)
+
         // Combine repository flows to update UI
         combine(
             messageRepository.getMessages(channelId),
@@ -160,6 +169,15 @@ class ChatViewModel @Inject constructor(
                     voiceChannelName = if (voiceState.isInVoice) "#$channelId" else null,
                     voiceParticipantCount = voiceState.participants.size,
                 )
+            }
+
+            // Fetch link previews for new messages (if enabled)
+            if (_uiState.value.linkPreviewsEnabled) {
+                messages.forEach { message ->
+                    extractUrl(message.content)?.let { url ->
+                        fetchLinkPreview(url)
+                    }
+                }
             }
         }.launchIn(viewModelScope)
         
@@ -448,8 +466,10 @@ class ChatViewModel @Inject constructor(
     }
 
     private fun MessageEntity.toDomainModel(): Message {
-        // Extract link preview if content contains URL
-        val linkPreview = extractLinkPreview(content)
+        // Get cached link preview if available
+        val cachedPreview = extractUrl(content)?.let { url ->
+            _uiState.value.linkPreviews[url]
+        }
         
         return Message(
             id = id,
@@ -467,22 +487,33 @@ class ChatViewModel @Inject constructor(
                 "failed" -> SendStatus.FAILED
                 else -> SendStatus.SENT
             },
-            linkPreview = linkPreview,
+            linkPreview = cachedPreview,
         )
     }
     
-    private fun extractLinkPreview(content: String): LinkPreview? {
-        // Simple URL detection for link previews
+    private fun extractUrl(content: String): String? {
         val urlRegex = "(https?://[^\\s]+)".toRegex()
         val match = urlRegex.find(content) ?: return null
+        return match.value.trimEnd(',', '.', '!', '?', ')')
+    }
+
+    private fun fetchLinkPreview(url: String) {
+        // Skip if already cached or currently fetching
+        if (_uiState.value.linkPreviews.containsKey(url)) return
         
-        val url = match.value
-        // For now, just create a placeholder preview
-        // TODO: Implement actual OG tag fetching
-        return LinkPreview(
-            url = url,
-            title = null,
-            description = null,
-        )
+        viewModelScope.launch {
+            try {
+                val preview = linkPreviewRepository.getLinkPreview(url)
+                preview?.let {
+                    _uiState.update { state ->
+                        state.copy(
+                            linkPreviews = state.linkPreviews + (url to it)
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                Timber.e(e, "Failed to fetch link preview for $url")
+            }
+        }
     }
 }

@@ -33,6 +33,7 @@ data class SettingsUiState(
     val voiceBitrate: String = UserPreferences.BITRATE_64K,
     val screenCapture: Boolean = false,
     val fontScale: Float = UserPreferences.FONT_SCALE_NORMAL,
+    val linkPreviewsEnabled: Boolean = true,
     val version: String = "0.1.0",
     val protocolVersion: String = "v1",
 )
@@ -66,6 +67,7 @@ class SettingsViewModel @Inject constructor(
             userPreferences.voiceBitrate,
             userPreferences.screenCapture,
             userPreferences.fontScale,
+            userPreferences.linkPreviewsEnabled,
         ) { values ->
             val nickname = values[0] as String? ?: ""
             val fingerprint = values[1] as String? ?: "Not generated"
@@ -92,6 +94,7 @@ class SettingsViewModel @Inject constructor(
                     voiceBitrate = values[14] as String,
                     screenCapture = values[15] as Boolean,
                     fontScale = values[16] as Float,
+                    linkPreviewsEnabled = values[17] as Boolean,
                 )
             }
         }.launchIn(viewModelScope)
@@ -143,6 +146,10 @@ class SettingsViewModel @Inject constructor(
     
     fun setFontScale(scale: Float) {
         viewModelScope.launch { userPreferences.setFontScale(scale) }
+    }
+    
+    fun setLinkPreviewsEnabled(v: Boolean) {
+        viewModelScope.launch { userPreferences.setLinkPreviewsEnabled(v) }
     }
     
     fun disconnect() {

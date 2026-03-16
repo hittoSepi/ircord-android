@@ -115,9 +115,10 @@ fun MessageBubble(
         // Link preview
         message.linkPreview?.let { preview ->
             LinkPreviewCard(
-                title = preview.title ?: "",
-                description = preview.description ?: "",
+                title = preview.title,
+                description = preview.description,
                 url = preview.url,
+                imageUrl = preview.imageUrl,
                 modifier = Modifier.padding(
                     start = IrcordSpacing.previewCardMarginStart,
                     top = IrcordSpacing.xs,

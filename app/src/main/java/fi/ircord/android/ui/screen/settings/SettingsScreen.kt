@@ -117,6 +117,7 @@ fun SettingsScreen(
             SettingsRow("Message style", state.messageStyle)
             SettingsRow("Timestamp", state.timestampFormat)
             SettingsToggle("Compact mode", state.compactMode, viewModel::setCompactMode)
+            SettingsToggle("Link previews", state.linkPreviewsEnabled, viewModel::setLinkPreviewsEnabled)
 
             SectionTitle("NOTIFICATIONS")
             SettingsToggle("Mentions", state.notifyMentions, viewModel::setNotifyMentions)

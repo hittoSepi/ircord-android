@@ -130,14 +130,14 @@
 - [x] Render links as clickable spans
 - [x] Used in MessageBubble for all message content
 
-### 2.4 Link Preview OG Fetching
-**Files:** `ChatViewModel.kt` (line ~327 TODO)
+### 2.4 Link Preview OG Fetching ✅
+**Files:** `LinkPreviewRepository.kt`, `LinkPreviewCard.kt`, `SettingsScreen.kt`
 
-- [ ] Fetch Open Graph metadata (title, description, image) from URLs
-- [ ] Cache results in Room DB
-- [ ] Display in LinkPreviewCard component
-- [ ] Timeout and error handling
-- [ ] Respect user preference (enable/disable in settings)
+- [x] Fetch Open Graph metadata (title, description, image) from URLs
+- [x] Cache results in Room DB (link_previews table with 24h TTL)
+- [x] Display in LinkPreviewCard component with domain extraction
+- [x] Timeout and error handling (10s timeout, error state caching)
+- [x] Respect user preference (enable/disable in settings)
 
 ### 2.5 Message Search ✅
 **Files:** `ChatScreen.kt`, `MessageRepository.kt`, `MessageDao.kt`
