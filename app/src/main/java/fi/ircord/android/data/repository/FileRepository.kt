@@ -5,13 +5,21 @@ import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import fi.ircord.android.domain.model.*
-import ircord.Ircord.*
-import fi.ircord.android.data.remote.IrcordSocket
+import ircord.Ircord
+import ircord.Ircord.Envelope
+import ircord.Ircord.FileChunk
+import ircord.Ircord.FileComplete
+import ircord.Ircord.FileDownloadRequest
+import ircord.Ircord.FileError
+import ircord.Ircord.FileProgress
+import ircord.Ircord.FileUploadChunk
+import ircord.Ircord.FileUploadRequest
+import ircord.Ircord.MessageType
+import fi.ircord.android.data.remote.IrcordConnectionManager
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import timber.log.Timber
 import java.io.File
-import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -24,7 +32,7 @@ import javax.inject.Singleton
 @Singleton
 class FileRepository @Inject constructor(
     private val context: Context,
-    private val ircordSocket: IrcordSocket,
+    private val connectionManager: IrcordConnectionManager,
     private val contentResolver: ContentResolver
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -186,13 +194,7 @@ class FileRepository @Inject constructor(
         try {
             updateTransfer(transfer.copy(status = TransferStatus.UPLOADING))
             
-            // TODO: Implement file upload using correct protobuf classes
-            // File upload is currently disabled pending protobuf message fixes
-            Timber.w("File upload not yet implemented")
-            updateTransfer(transfer.copy(status = TransferStatus.FAILED, errorMessage = "Not implemented"))
-            return
-            
-            /* Original implementation - commented out due to missing protobuf classes:
+            // Send upload request
             val request = FileUploadRequest.newBuilder()
                 .setFileId(transfer.fileId)
                 .setFilename(transfer.filename)
@@ -205,7 +207,7 @@ class FileRepository @Inject constructor(
                 }
                 .build()
             
-            ircordSocket.send(request.toByteArray())
+            connectionManager.sendFileUploadRequest(request)
             
             // Read and send file in chunks
             contentResolver.openInputStream(uri)?.use { input ->
@@ -228,7 +230,7 @@ class FileRepository @Inject constructor(
                         .setIsLast(bytesRead < FileTransferLimits.CHUNK_SIZE)
                         .build()
                     
-                    ircordSocket.send(MT_FILE_UPLOAD, chunk)
+                    connectionManager.sendFileUploadChunk(chunk)
                     
                     totalSent += bytesRead
                     val progress = totalSent.toFloat() / transfer.fileSize
@@ -241,7 +243,6 @@ class FileRepository @Inject constructor(
             
             // Wait for server completion confirmation
             // (handled via server response in message handler)
-            */
             
         } catch (e: Exception) {
             Timber.e(e, "Upload failed for ${transfer.fileId}")
@@ -256,13 +257,7 @@ class FileRepository @Inject constructor(
         try {
             updateTransfer(transfer.copy(status = TransferStatus.DOWNLOADING))
             
-            // TODO: Implement file download using correct protobuf classes
-            // File download is currently disabled pending protobuf message fixes
-            Timber.w("File download not yet implemented")
-            updateTransfer(transfer.copy(status = TransferStatus.FAILED, errorMessage = "Not implemented"))
-            return
-            
-            /* Original implementation - commented out due to missing protobuf classes:
+            // Create local file
             val downloadsDir = context.getExternalFilesDir("downloads")
                 ?: context.filesDir
             val localFile = File(downloadsDir, transfer.fileId + "_" + transfer.filename)
@@ -272,14 +267,13 @@ class FileRepository @Inject constructor(
                 .setChunkIndex(0)
                 .build()
             
-            ircordSocket.send(request.toByteArray())
+            connectionManager.sendFileDownloadRequest(request)
             
             // Download is handled asynchronously via server responses
             // Update local URI for when download completes
             updateTransfer(transfer.copy(
                 localUri = Uri.fromFile(localFile).toString()
             ))
-            */
             
         } catch (e: Exception) {
             Timber.e(e, "Download failed for ${transfer.fileId}")
@@ -291,36 +285,100 @@ class FileRepository @Inject constructor(
     }
     
     /**
-     * Handle incoming file chunk from server.
-     * Called by socket message handler.
+     * Initialize file transfer handlers by connecting to connection manager callbacks.
+     * Call this from Application or a startup component.
      */
-    fun handleFileChunk(chunk: ircord.Ircord.FileChunk) {
-        // TODO: Implement file chunk handling
-        Timber.w("File chunk handling not yet implemented")
+    fun initialize() {
+        connectionManager.onFileChunk = { chunk -> handleFileChunk(chunk) }
+        connectionManager.onFileProgress = { progress -> handleFileProgress(progress) }
+        connectionManager.onFileComplete = { complete -> handleFileComplete(complete) }
+        connectionManager.onFileError = { error -> handleFileError(error) }
+        Timber.d("FileRepository initialized with connection manager")
+    }
+
+    /**
+     * Handle incoming file chunk from server.
+     */
+    private fun handleFileChunk(chunk: ircord.Ircord.FileChunk) {
+        val transfer = activeTransfers[chunk.fileId] ?: return
+        
+        if (transfer.direction != TransferDirection.DOWNLOAD) return
+        
+        scope.launch {
+            try {
+                // Write chunk to local file
+                val localFile = transfer.localUri?.let { Uri.parse(it).path }?.let { File(it) }
+                    ?: return@launch
+                
+                // Append chunk data to file
+                FileOutputStream(localFile, true).use { output ->
+                    output.write(chunk.data.toByteArray())
+                }
+                
+                // Calculate progress
+                val bytesTransferred = localFile.length()
+                val progress = if (transfer.fileSize > 0) {
+                    bytesTransferred.toFloat() / transfer.fileSize
+                } else 0f
+                
+                updateTransfer(transfer.copy(
+                    bytesTransferred = bytesTransferred,
+                    progress = progress,
+                    status = if (chunk.isLast) TransferStatus.COMPLETED else TransferStatus.DOWNLOADING
+                ))
+                
+                if (chunk.isLast) {
+                    Timber.i("Download completed: ${chunk.fileId}")
+                }
+            } catch (e: Exception) {
+                Timber.e(e, "Failed to write file chunk for ${chunk.fileId}")
+                updateTransfer(transfer.copy(
+                    status = TransferStatus.FAILED,
+                    errorMessage = e.message
+                ))
+            }
+        }
     }
     
     /**
      * Handle file progress update from server.
      */
-    fun handleFileProgress(progress: ircord.Ircord.FileProgress) {
-        // TODO: Implement file progress handling
-        Timber.w("File progress handling not yet implemented")
+    private fun handleFileProgress(progress: ircord.Ircord.FileProgress) {
+        val transfer = activeTransfers[progress.fileId] ?: return
+        
+        updateTransfer(transfer.copy(
+            bytesTransferred = progress.bytesTransferred,
+            progress = progress.percentComplete / 100f
+        ))
     }
     
     /**
      * Handle file completion from server.
      */
-    fun handleFileComplete(complete: ircord.Ircord.FileComplete) {
-        // TODO: Implement file complete handling
-        Timber.w("File complete handling not yet implemented")
+    private fun handleFileComplete(complete: ircord.Ircord.FileComplete) {
+        val transfer = activeTransfers[complete.fileId] ?: return
+        
+        updateTransfer(transfer.copy(
+            status = TransferStatus.COMPLETED,
+            bytesTransferred = complete.totalBytes,
+            progress = 1f
+        ))
+        
+        Timber.i("File transfer completed: ${complete.fileId}")
     }
     
     /**
      * Handle file error from server.
      */
-    fun handleFileError(error: ircord.Ircord.FileError) {
-        // TODO: Implement file error handling
-        Timber.w("File error handling not yet implemented")
+    private fun handleFileError(error: ircord.Ircord.FileError) {
+        val transfer = activeTransfers[error.fileId] ?: return
+        
+        updateTransfer(transfer.copy(
+            status = TransferStatus.FAILED,
+            errorMessage = "[${error.errorCode}] ${error.errorMessage}"
+        ))
+        
+        Timber.e("File transfer error: ${error.fileId} - ${error.errorMessage}")
     }
     
     private fun updateTransfer(transfer: FileTransfer) {

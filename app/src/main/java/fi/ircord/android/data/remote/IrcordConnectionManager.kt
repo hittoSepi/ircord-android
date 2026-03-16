@@ -75,6 +75,12 @@ class IrcordConnectionManager @Inject constructor(
     var onUserJoined: ((channelId: String, userId: String, nickname: String) -> Unit)? = null
     var onUserLeft: ((channelId: String, userId: String, nickname: String) -> Unit)? = null
 
+    // Callbacks for file transfer events
+    var onFileChunk: ((ircord.Ircord.FileChunk) -> Unit)? = null
+    var onFileProgress: ((ircord.Ircord.FileProgress) -> Unit)? = null
+    var onFileComplete: ((ircord.Ircord.FileComplete) -> Unit)? = null
+    var onFileError: ((ircord.Ircord.FileError) -> Unit)? = null
+
     // Tracked online users
     private val _onlineUsers = MutableStateFlow<Set<String>>(emptySet())
     val onlineUsers: StateFlow<Set<String>> = _onlineUsers.asStateFlow()
@@ -326,6 +332,10 @@ class IrcordConnectionManager @Inject constructor(
             MessageType.MT_NICK_CHANGE    -> handleNickChange(payload)
             MessageType.MT_MOTD           -> handleMotd(payload)
             MessageType.MT_USER_INFO      -> handleUserInfo(payload)
+            MessageType.MT_FILE_CHUNK     -> handleFileChunk(payload)
+            MessageType.MT_FILE_PROGRESS  -> handleFileProgress(payload)
+            MessageType.MT_FILE_COMPLETE  -> handleFileComplete(payload)
+            MessageType.MT_FILE_ERROR     -> handleFileError(payload)
             else -> Timber.d("Unhandled message type: ${env.type}")
         }
     }
@@ -551,8 +561,64 @@ class IrcordConnectionManager @Inject constructor(
     }
 
     // ========================================================================
+    // File Transfer
+    // ========================================================================
+
+    fun sendFileUploadRequest(request: ircord.Ircord.FileUploadRequest): Boolean {
+        return sendEnvelope(MessageType.MT_FILE_UPLOAD, request.toByteArray())
+    }
+
+    fun sendFileUploadChunk(chunk: ircord.Ircord.FileUploadChunk): Boolean {
+        return sendEnvelope(MessageType.MT_FILE_UPLOAD, chunk.toByteArray())
+    }
+
+    fun sendFileDownloadRequest(request: ircord.Ircord.FileDownloadRequest): Boolean {
+        return sendEnvelope(MessageType.MT_FILE_DOWNLOAD, request.toByteArray())
+    }
+
+    private fun handleFileChunk(payload: ByteArray) {
+        try {
+            val chunk = ircord.Ircord.FileChunk.parseFrom(payload)
+            Timber.d("File chunk: ${chunk.fileId}, index=${chunk.chunkIndex}, size=${chunk.data.size()} bytes")
+            onFileChunk?.invoke(chunk)
+        } catch (e: Exception) {
+            Timber.e(e, "Error parsing file chunk")
+        }
+    }
+
+    private fun handleFileProgress(payload: ByteArray) {
+        try {
+            val progress = ircord.Ircord.FileProgress.parseFrom(payload)
+            Timber.d("File progress: ${progress.fileId}, ${progress.percentComplete}%")
+            onFileProgress?.invoke(progress)
+        } catch (e: Exception) {
+            Timber.e(e, "Error parsing file progress")
+        }
+    }
+
+    private fun handleFileComplete(payload: ByteArray) {
+        try {
+            val complete = ircord.Ircord.FileComplete.parseFrom(payload)
+            Timber.d("File complete: ${complete.fileId}, ${complete.totalBytes} bytes")
+            onFileComplete?.invoke(complete)
+        } catch (e: Exception) {
+            Timber.e(e, "Error parsing file complete")
+        }
+    }
+
+    private fun handleFileError(payload: ByteArray) {
+        try {
+            val error = ircord.Ircord.FileError.parseFrom(payload)
+            Timber.e("File error: ${error.fileId}, code=${error.errorCode}, ${error.errorMessage}")
+            onFileError?.invoke(error)
+        } catch (e: Exception) {
+            Timber.e(e, "Error parsing file error")
+        }
+    }
+
+    // ========================================================================
     // Helpers
-    // =======================================================================
+    // ===================================================================
 
     private fun sendEnvelope(type: MessageType, payload: ByteArray): Boolean {
         val env = Envelope.newBuilder()

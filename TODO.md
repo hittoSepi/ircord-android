@@ -203,37 +203,39 @@
 
 ---
 
-## Tier 4: File Transfer
+## Tier 4: File Transfer ✅
 
-### 4.1 File Upload
-**Files:** `FileRepository.kt` (currently returns failure)
+### 4.1 File Upload ✅
+**Files:** `FileRepository.kt`, `IrcordConnectionManager.kt`
 
-- [ ] Implement `uploadFileInternal()` — chunk file, send MT_FILE_UPLOAD
-- [ ] Send FileUploadRequest with metadata
-- [ ] Stream FileUploadChunk messages (64KB chunks)
-- [ ] SHA-256 checksum per chunk
-- [ ] Progress tracking via callback
-- [ ] Respect 100MB limit
-- [ ] Encrypt file data before upload (E2E)
+- [x] Implement `uploadFileInternal()` — chunk file, send MT_FILE_UPLOAD
+- [x] Send FileUploadRequest with metadata
+- [x] Stream FileUploadChunk messages (64KB chunks)
+- [x] Progress tracking via callback
+- [x] Respect 100MB limit
+- [ ] SHA-256 checksum per chunk (server-side)
+- [ ] Encrypt file data before upload (E2E) — future work
 
-### 4.2 File Download
-**Files:** `FileRepository.kt` (currently returns failure)
+### 4.2 File Download ✅
+**Files:** `FileRepository.kt`, `IrcordConnectionManager.kt`
 
-- [ ] Implement `downloadFileInternal()` — send MT_FILE_DOWNLOAD
-- [ ] Receive MT_FILE_CHUNK → write to storage
-- [ ] Handle MT_FILE_PROGRESS, MT_FILE_COMPLETE, MT_FILE_ERROR
-- [ ] Resume support (start from chunk_index)
-- [ ] Verify checksum on completion
-- [ ] Decrypt after download
+- [x] Implement `downloadFileInternal()` — send MT_FILE_DOWNLOAD
+- [x] Receive MT_FILE_CHUNK → write to storage
+- [x] Handle MT_FILE_PROGRESS, MT_FILE_COMPLETE, MT_FILE_ERROR
+- [x] Progress tracking via callback
+- [ ] Resume support (start from chunk_index) — future work
+- [ ] Verify checksum on completion — future work
+- [ ] Decrypt after download — future work
 
-### 4.3 File UI Integration
+### 4.3 File UI Integration ✅
 **Files:** `FileAttachmentButton.kt`, `ChatScreen.kt`
 
-- [ ] File picker → upload flow
-- [ ] Display file messages in chat (name, size, progress)
-- [ ] Download button on received files
-- [ ] Image preview for image files
-- [ ] Open file with system intent on completion
+- [x] File picker → upload flow (already in MessageInput)
+- [x] Display file messages in chat (FileTransferProgress component)
+- [x] Progress indicator during upload/download
+- [x] Download handling via FileRepository callbacks
+- [ ] Image preview for image files — future work
+- [ ] Open file with system intent on completion — future work
 
 ---
 

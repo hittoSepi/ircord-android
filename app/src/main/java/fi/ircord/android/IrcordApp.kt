@@ -2,15 +2,25 @@ package fi.ircord.android
 
 import android.app.Application
 import dagger.hilt.android.HiltAndroidApp
+import fi.ircord.android.data.repository.FileRepository
 import timber.log.Timber
+import javax.inject.Inject
 
 @HiltAndroidApp
 class IrcordApp : Application() {
+
+    @Inject
+    lateinit var fileRepository: FileRepository
+
     override fun onCreate() {
         super.onCreate()
         if (BuildConfig.DEBUG) {
             Timber.plant(Timber.DebugTree())
         }
+        
+        // Initialize file transfer handlers
+        fileRepository.initialize()
+        
         Timber.d("IrcordApp initialized")
     }
 }
